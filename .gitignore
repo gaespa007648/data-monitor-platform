@@ -1,0 +1,8 @@
+artifact/*
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+secrets/
+backups/
