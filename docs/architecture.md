@@ -10,14 +10,14 @@ flowchart LR
     Client[API 使用者] -->|localhost:8000| API[api / FastAPI]
     Frontend -->|app_net / HTTP api:8000| API
     API -->|data_net / Async ORM| DB[(db / MariaDB 11.7.2)]
-    Migrate[migrate / Alembic 與帳號初始化] -->|data_net| DB
+    Migrate[migrate / Alembic、帳號與範例初始化] -->|data_net| DB
     DB --> Volume[(mariadb_data named volume)]
 ```
 
 | 服務 | 職責 | 生命週期 |
 | --- | --- | --- |
 | db | MariaDB 11.7.2、InnoDB、utf8mb4 資料儲存 | 常駐，健康檢查確認連線與 InnoDB 初始化 |
-| migrate | Alembic schema 升版、選用的測試帳號建立與密碼同步 | 一次性，成功後結束碼為 0 |
+| migrate | Alembic schema 升版、選用的測試帳號建立與密碼同步、缺少的範例數據集匯入 | 一次性，成功後結束碼為 0 |
 | api | FastAPI、Pydantic、JWT、角色授權、Async ORM | 常駐，提供 REST 與 Swagger |
 | frontend | Streamlit 多頁面、登入／登出、服務概況與管理員清單 | 常駐，透過 HTTPX 呼叫 API |
 
@@ -57,6 +57,8 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 - Streamlit 以 Session State 保存目前連線的登入狀態，並將 JWT 存入瀏覽器 localStorage。重新連線時向後端驗證取回的 JWT；登出或驗證失敗時清除前端及瀏覽器儲存的權杖。
 
 `SEED_DEMO_USERS=true` 時，migrate 會建立缺少的 admin／viewer，並依 `DEMO_ADMIN_PASSWORD`、`DEMO_VIEWER_PASSWORD` 同步既有密碼。僅密碼不同才更新雜湊，保留 id、角色及啟用狀態；兩組密碼都須至少 12 個字元。seed 關閉時不進行上述操作。
+
+後端映像含 `data/` 的兩份範例 CSV。migrate 會依完整名稱（區分大小寫）檢查 `example-iris`、`example-vega-stocks`；缺少時透過相同的 Schema 驗證規則與 SQLAlchemy ORM 在交易中建立數據集、Schema、匯入批次與資料列。已存在的名稱直接跳過，既有內容不會被覆蓋或補齊。範例資料由不可登入的內部帳號持有，因此不依賴測試帳號是否啟用。
 
 ## 功能與部署限制
 

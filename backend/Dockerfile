@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.t
     && rm -rf /wheels \
     && useradd --create-home --uid 10001 appuser
 COPY backend/ .
+COPY data/ ./data/
 USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

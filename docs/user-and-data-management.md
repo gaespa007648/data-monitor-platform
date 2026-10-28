@@ -15,6 +15,8 @@
 
 ## 數據集 Schema 與記錄
 
+Compose 首次啟動會從專案 `data/` 建立缺少的公開範例：`example-iris` 保留 `Id`、四個花萼／花瓣數值欄位與 `Species`，其中 `Id` 為 unique 整數；`example-vega-stocks` 含 `symbol`、`date`、`price`，股票 CSV 的原始日期會轉成 UTC datetime。兩者由停用登入的內部帳號持有，所有登入者可檢視，Admin 可管理。初始化只依完整名稱判斷是否建立；若已有同名數據集，即使其資料後來更動或刪除，也不會在重啟時重新匯入。
+
 數據集在建立時包含 1–100 個自訂欄位。每欄可選填備註（最多 500 字元）及 data_type：string、integer、decimal、datetime、boolean；另可設定 required、nullable、unique（預設 false）。備註是欄位說明，不是資料記錄的值，也不參與資料型別驗證。欄名區分大小寫，不可重複；不可使用保留前綴 `__`。建立後，原欄位的名稱、備註、型別與規則不能變更或刪除，只能新增欄位；每次新增產生新的 Schema 版本。舊數據集欄位的 unique 預設 false；舊記錄保留當時的 Schema 版本，新欄位不回填。
 
 手動建立資料時，後端依目前 Schema 驗證，通過才寫入。批次匯入須先選數據集，指定目前 Schema 版本及 CSV／JSON 檔案。預檢全檔不寫入；確認後再次驗證，包含 unique 欄位的同批及既有資料衝突檢查，資料、批次快照與稽核在同一交易提交。MariaDB 另以唯一索引防止並行寫入重複值。任何一列錯誤都不部分寫入。每檔最多 2 MiB、1000 筆資料；HTTP 請求另有 2 MiB 加 64 KiB 的上限。CSV 可選擇將第一列當欄名跳過，或不使用欄名、依 Schema 順序匯入每一列；JSON 頂層為物件陣列。完整頁面操作見 [Streamlit 前端操作手冊](streamlit-user-guide.md)。

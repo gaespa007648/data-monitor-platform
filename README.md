@@ -23,6 +23,7 @@
 ```text
 compose.yaml                 # 唯一一份容器編排設定
 .env.example                 # 本機設定範本，不含正式憑證
+data/                        # 首次啟動時使用的 Iris 與 Vega Stocks 範例 CSV
 backend/
   Dockerfile                 # 共用於 api 與 migrate 的多階段映像
   app/                       # 設定、ORM、JWT、API、初始化流程
@@ -96,6 +97,8 @@ MariaDB 資料位於 `${COMPOSE_PROJECT_NAME}_mariadb_data` named volume，掛�
 **`docker compose down -v` 會永久刪除本專案資料 volume，只限確定要清空本機資料時使用。** 不要更改 project name 後誤以為原資料消失；不同 project name 會使用不同 volume。Volume 不是備份，正式使用前仍需建立異機備份及還原流程。
 
 MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PASSWORD 不會同步修改既有資料庫帳號。應用測試帳號由另一個 ORM 初始化流程管理：`SEED_DEMO_USERS=true` 時會建立不存在的帳號，並同步既有 admin 與 viewer 的密碼；不修改既有角色或啟用狀態。
+
+`migrate` 每次啟動會以完整名稱檢查 `example-iris` 與 `example-vega-stocks`；缺少時才從 `data/` 的 CSV 建立 Schema 並匯入資料，已有同名數據集則不修改或補匯資料。這項範例初始化不受 `SEED_DEMO_USERS` 開關影響；詳細欄位與日期格式見 [使用者與資料管理](docs/user-and-data-management.md)。
 
 目前為本機初始化設定，僅將 API 與 Streamlit 綁定 `127.0.0.1`。正式對外部署前需更換所有範本密碼與 JWT secret、設定 `SEED_DEMO_USERS=false`、移除既有測試帳號、加入 TLS 及更細的 DB 權限。目前共用 DB 帳號包含 migration 所需 schema 權限；尚未拆分 runtime／migration 帳號。`.env` 已排除版控，但環境變數仍可被有 Docker 管理權限的人檢視。
 

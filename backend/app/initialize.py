@@ -11,6 +11,7 @@ from app.database import SessionFactory, engine
 from app.models import Category, User
 from app.security import password_hash
 from app.import_templates import seed_builtin_templates
+from app.example_datasets import seed_example_datasets
 
 
 async def seed_demo_users():
@@ -44,6 +45,7 @@ async def initialize():
             if await session.scalar(select(Category.id).where(Category.name == name)) is None:
                 session.add(Category(name=name))
         await seed_builtin_templates(session)
+        await seed_example_datasets(session)
     await seed_demo_users()
 
 
