@@ -4,6 +4,7 @@ import os
 import httpx
 import streamlit as st
 
+from auth_storage import browser_token
 from dataset_ui import render_dataset_page, render_manual_page, render_import_page, render_analysis_page
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
@@ -20,6 +21,7 @@ def request(method, path, **kwargs):
     response = httpx.request(method, f"{API_BASE_URL}{path}", headers=headers, timeout=30, **kwargs)
     if response.status_code == 401 and "token" in st.session_state:
         st.session_state.clear()
+        st.session_state["clear_browser_token"] = True
         st.rerun()
     response.raise_for_status()
     return response.content if raw else (response.json() if response.content else None)
@@ -111,9 +113,25 @@ def analysis_page():
     render_analysis_page(request, show_error)
 
 
+if st.session_state.get("clear_browser_token"):
+    result = browser_token("clear")
+    if isinstance(result, dict) and result.get("action") == "clear":
+        st.session_state.pop("clear_browser_token", None)
+elif "token" not in st.session_state:
+    result = browser_token("read")
+    if isinstance(result, dict) and result.get("action") == "read" and result.get("token"):
+        st.session_state["token"] = result["token"]
+        try:
+            st.session_state["user"] = request("GET", "/api/v1/users/me")
+        except httpx.HTTPError:
+            st.session_state.pop("token", None)
+            st.session_state.pop("user", None)
+            st.session_state["clear_browser_token"] = True
+        st.rerun()
 if "token" not in st.session_state:
     st.navigation([st.Page(login_page, title="登入"), st.Page(registration_page, title="註冊")]).run()
 else:
+    browser_token("save", st.session_state["token"])
     try:
         st.session_state["user"] = request("GET", "/api/v1/users/me")
     except httpx.HTTPError as exc:
@@ -123,6 +141,7 @@ else:
     st.sidebar.write(f"目前使用者：{user['username']} · {user['role'].title()}")
     if st.sidebar.button("登出"):
         st.session_state.clear()
+        st.session_state["clear_browser_token"] = True
         st.rerun()
     pages = [st.Page(overview_page, title="服務概況")]
     if user["role"] == "admin":

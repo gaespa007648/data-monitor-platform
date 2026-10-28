@@ -54,7 +54,7 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 - admin 可管理全部數據集與資料、建立分類及查看使用者清單。
 - user 可建立自己的數據集、附加其欄位及寫入資料；既有固定欄位記錄仍只能修改／刪除自己建立的記錄。
 - viewer 僅可讀取共享資料與自身資訊，無寫入或管理權限。
-- Streamlit 以 Session State 保存登入狀態，登出只清除前端 session。
+- Streamlit 以 Session State 保存目前連線的登入狀態，並將 JWT 存入瀏覽器 localStorage。重新連線時向後端驗證取回的 JWT；登出或驗證失敗時清除前端及瀏覽器儲存的權杖。
 
 `SEED_DEMO_USERS=true` 時，migrate 會建立缺少的 admin／viewer，並依 `DEMO_ADMIN_PASSWORD`、`DEMO_VIEWER_PASSWORD` 同步既有密碼。僅密碼不同才更新雜湊，保留 id、角色及啟用狀態；兩組密碼都須至少 12 個字元。seed 關閉時不進行上述操作。
 

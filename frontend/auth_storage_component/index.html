@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;overflow:hidden">
+<script>
+  const key = "data-monitor-platform.access-token";
+  let lastRequest = null;
+  function send(type, data) {
+    window.parent.postMessage({isStreamlitMessage: true, type, ...data}, "*");
+  }
+  window.addEventListener("message", event => {
+    if (event.source !== window.parent || event.data?.type !== "streamlit:render") return;
+    const {action, token} = event.data.args || {};
+    const request = JSON.stringify([action, token]);
+    if (request === lastRequest) return;
+    lastRequest = request;
+    let stored = null;
+    try {
+      if (action === "save" && typeof token === "string" && token) {
+        localStorage.setItem(key, token);
+      } else if (action === "clear") {
+        localStorage.removeItem(key);
+      } else if (action === "read") {
+        stored = localStorage.getItem(key);
+      }
+    } catch (error) {
+      // Private browsing or disabled storage: login still works for this session.
+    }
+    send("streamlit:setComponentValue", {
+      dataType: "json", value: {action, token: stored}
+    });
+  });
+  send("streamlit:componentReady", {apiVersion: 1});
+  send("streamlit:setFrameHeight", {height: 0});
+</script>
+</body>
+</html>
