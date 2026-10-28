@@ -113,7 +113,7 @@ def render_dataset_page(request, show_error, navigate_to_manage=None):
                     navigate_to_manage(created["id"])
             return
         st.session_state.pop("dataset_created", None)
-        dataset = choose_dataset(request, "manage_dataset")
+        dataset = choose_dataset(request, "manage_dataset", show_page=False)
         if dataset is None:
             return
         show_schema(dataset)

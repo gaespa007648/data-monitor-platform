@@ -105,6 +105,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     widget(app, "radio", "數據集操作").set_value("編輯數據集")
     with patch("streamlit.data_editor", return_value=[{"name": "notes", "remark": "觀察註記", "data_type": "未指定", "required": False, "nullable": True, "unique": True}]):
         app.run()
+        assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
         widget(app, "button", "新增欄位").click().run()
     assert not app.exception and app.success
