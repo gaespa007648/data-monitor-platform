@@ -116,6 +116,7 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 | GET／POST `/api/v1/records` | 資料分頁查詢／建立 |
 | GET／PATCH／DELETE `/api/v1/records/{id}` | 讀取／更新／刪除記錄；寫入須符合角色與擁有者權限 |
 | POST `/api/v1/record-imports` | CSV／JSON 預檢與冪等批次匯入 |
+| GET／POST `/api/v1/import-schemas` | 選取或建立匯入 Schema 範本，支援選填型別與版本管理 |
 
 Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer token 欄位，即可測試受保護 API。權杖不包含密碼雜湊，API 回應也不回傳該欄位。
 
@@ -152,6 +153,7 @@ docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate 
 
 ## 延伸文件
 
+- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：Schema 設定、範本資料生成、預檢與批次匯入完整步驟。
 - [系統架構與架構圖](docs/architecture.md)：容器職責、通訊、認證與資料儲存。
 - [使用者與資料管理](docs/user-and-data-management.md)：角色、資料操作與 CSV／JSON 匯入格式。
 - [JWT 認證機制](docs/jwt-authentication.md)：權杖格式、有效期與驗證流程。

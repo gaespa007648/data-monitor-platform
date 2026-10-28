@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from decimal import Decimal
-from sqlalchemy import DateTime, String, ForeignKey, Numeric, Text, UniqueConstraint, Index
+from sqlalchemy import DateTime, String, ForeignKey, Numeric, Text, UniqueConstraint, Index, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.mysql import DATETIME
 
@@ -43,6 +43,9 @@ class ImportBatch(Base):
     idempotency_key: Mapped[str] = mapped_column(String(64))
     content_hash: Mapped[str] = mapped_column(String(64))
     row_count: Mapped[int]
+    schema_version_id: Mapped[int | None] = mapped_column(ForeignKey("import_schema_versions.id"))
+    rules_hash: Mapped[str | None] = mapped_column(String(64))
+    schema_snapshot: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
 
 
@@ -75,3 +78,50 @@ class AuditLog(Base):
     resource_id: Mapped[int | None]
     details: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class ImportSchemaTemplate(Base):
+    __tablename__ = "import_schema_templates"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_schema_owner_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(500), default="")
+    visibility: Mapped[str] = mapped_column(String(10), default="private")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    builtin_key: Mapped[str | None] = mapped_column(String(30), unique=True)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow, onupdate=utcnow)
+
+
+class ImportSchemaVersion(Base):
+    __tablename__ = "import_schema_versions"
+    __table_args__ = (UniqueConstraint("template_id", "number", name="uq_schema_version_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("import_schema_templates.id"))
+    number: Mapped[int]
+    status: Mapped[str] = mapped_column(String(12), default="draft")
+    file_format: Mapped[str] = mapped_column(String(5))
+    extra_policy: Mapped[str] = mapped_column(String(10), default="reject")
+    trim_whitespace: Mapped[bool] = mapped_column(default=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    rules_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class ImportSchemaField(Base):
+    __tablename__ = "import_schema_fields"
+    __table_args__ = (
+        UniqueConstraint("version_id", "source_field", name="uq_schema_source_field"),
+        UniqueConstraint("version_id", "target_field", name="uq_schema_target_field"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("import_schema_versions.id"))
+    source_field: Mapped[str] = mapped_column(String(128, collation="utf8mb4_bin"))
+    target_field: Mapped[str] = mapped_column(String(30))
+    data_type: Mapped[str | None] = mapped_column(String(15))
+    position: Mapped[int]
+    allow_numeric_string: Mapped[bool | None]
+    max_length: Mapped[int | None]
+    max_digits: Mapped[int | None]
+    decimal_places: Mapped[int | None]

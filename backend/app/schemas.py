@@ -12,7 +12,10 @@ Role = Literal["admin", "user", "viewer"]
 def utc_time(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("Timestamp must include timezone, for example +08:00 or Z")
-    result = value.astimezone(timezone.utc).replace(tzinfo=None)
+    try:
+        result = value.astimezone(timezone.utc).replace(tzinfo=None)
+    except OverflowError:
+        raise ValueError("Timestamp is outside the supported database range") from None
     if result.year < 1000 or result.year > 9999:
         raise ValueError("Timestamp is outside the supported database range")
     return result
@@ -107,3 +110,8 @@ class ImportResult(BaseModel):
     row_count: int
     preview: bool
     replayed: bool = False
+    schema_version_id: int | None = None
+    rules_hash: str | None = None
+    fingerprint: str | None = None
+    normalized_sample: list[dict] = Field(default_factory=list)
+    ignored_fields: list[str] = Field(default_factory=list)

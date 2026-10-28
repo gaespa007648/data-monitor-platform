@@ -1,14 +1,10 @@
-import csv
 import hashlib
-import io
 import json
 from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, Response, UploadFile
-from pydantic import ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import CurrentUser, Session, require_admin, require_owner, require_writer
 from app.models import AuditLog, Category, ImportBatch, Record, User
@@ -131,45 +127,33 @@ async def delete_record(record_id: int, session: Session, user: CurrentUser,
 
 
 def parse_import(content: bytes, filename: str) -> list[RecordInput]:
-    try:
-        text = content.decode("utf-8-sig")
-        if filename.lower().endswith(".json"):
-            rows = json.loads(text, parse_constant=lambda value: (_ for _ in ()).throw(ValueError("Non-finite number")))
-            if not isinstance(rows, list):
-                raise ValueError("JSON must contain an array of objects")
-        elif filename.lower().endswith(".csv"):
-            reader = csv.DictReader(io.StringIO(text), strict=True)
-            expected = {"title", "value", "category_id", "timestamp"}
-            if not reader.fieldnames or len(reader.fieldnames) != len(expected) or set(reader.fieldnames) != expected:
-                raise ValueError("CSV headers must be title,value,category_id,timestamp")
-            rows = []
-            for row in reader:
-                rows.append(row)
-                if len(rows) > MAX_IMPORT_ROWS:
-                    break
-        else:
-            raise ValueError("Only .csv and .json files are supported")
-    except (UnicodeDecodeError, ValueError, csv.Error, RecursionError):
-        raise HTTPException(422, "Invalid UTF-8 CSV/JSON structure or unsupported file type") from None
-    if not 1 <= len(rows) <= MAX_IMPORT_ROWS:
-        raise HTTPException(422, "Import must contain 1 to 1000 rows")
-    validated, errors = [], []
-    for index, row in enumerate(rows, 1):
-        try:
-            validated.append(RecordInput.model_validate(row))
-        except ValidationError as exc:
-            errors.append({"row": index, "errors": [
-                {"field": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in exc.errors()]})
-    if errors:
-        raise HTTPException(422, {"message": "No rows imported", "rows": errors[:50], "error_rows": len(errors)})
-    return validated
+    """Compatibility helper retained for existing callers and validation tests."""
+    from app.import_rules import default_rules, validate_source
+    kind = filename.lower().rsplit(".", 1)[-1]
+    if kind not in {"csv", "json"}:
+        raise HTTPException(422, "Only CSV and JSON are supported")
+    return validate_source(content, filename, default_rules(kind))[0]
+
+
+@router.get("/record-imports/{batch_id}")
+async def read_import(batch_id: int, session: Session, user: CurrentUser):
+    batch = await session.get(ImportBatch, batch_id)
+    if batch is None or (batch.owner_id != user.id and user.role != "admin"):
+        raise HTTPException(404, "Import batch not found")
+    return {"id": batch.id, "row_count": batch.row_count, "schema_version_id": batch.schema_version_id,
+            "rules_hash": batch.rules_hash, "schema_snapshot": batch.schema_snapshot,
+            "legacy": batch.schema_version_id is None}
 
 
 @router.post("/record-imports", response_model=ImportResult, status_code=201)
 async def import_records(session: Session, user: CurrentUser,
     file: Annotated[UploadFile, File()],
     idempotency_key: Annotated[str, Header(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")],
-    preview: bool = False):
+    preview: bool = False, schema_version_id: int | None = Query(None, gt=0)):
+    from datetime import timezone
+    from app.import_rules import validate_source
+    from app.import_templates import get_template, get_version, version_rules
+    from app.models import ImportSchemaTemplate, ImportSchemaVersion
     require_writer(user)
     try:
         content = await file.read(MAX_FILE_BYTES + 1)
@@ -177,44 +161,68 @@ async def import_records(session: Session, user: CurrentUser,
         await file.close()
     if len(content) > MAX_FILE_BYTES:
         raise HTTPException(413, "File exceeds 2 MiB")
-    rows = parse_import(content, file.filename or "")
-    known_categories = set((await session.scalars(select(Category.id))).all())
-    missing = [{"row": i, "category_id": row.category_id} for i, row in enumerate(rows, 1)
-               if row.category_id not in known_categories]
-    if missing:
-        raise HTTPException(422, {"message": "Unknown categories; no rows imported", "rows": missing[:50]})
-    if preview:
-        return ImportResult(row_count=len(rows), preview=True)
-    # Serialize imports for this owner. Locking reads below see the latest commit
-    # and read a completed previous batch before attempting a duplicate insert.
-    await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
-    digest = hashlib.sha256(content + b"\0" + (file.filename or "").lower().split(".")[-1].encode()).hexdigest()
-    async def existing_result():
-        batch = await session.scalar(select(ImportBatch).where(
-            ImportBatch.owner_id == user.id, ImportBatch.idempotency_key == idempotency_key).with_for_update())
-        if batch:
-            if batch.content_hash != digest:
-                raise HTTPException(409, "Idempotency key already used for different content")
-            return ImportResult(batch_id=batch.id, row_count=batch.row_count, preview=False, replayed=True)
-    existing = await existing_result()
-    if existing:
-        return existing
-    batch = ImportBatch(owner_id=user.id, idempotency_key=idempotency_key,
-                        content_hash=digest, row_count=len(rows))
-    session.add(batch)
-    owner_id = user.id
-    try:
-        await session.flush()
-        session.add_all([Record(**row.model_dump(), owner_id=owner_id, source="import", import_batch_id=batch.id)
-                         for row in rows])
-        audit(session, user, "record.import", batch.id, f"rows={len(rows)}")
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        # rollback expires ORM objects; use the captured owner id for the retry lookup.
+    kind = (file.filename or "").lower().rsplit(".", 1)[-1]
+    if kind not in {"csv", "json"}:
+        raise HTTPException(422, "Only CSV and JSON are supported")
+    # One lock ordering for all template writes/imports: user -> template -> version.
+    # Locks stay held through validation/commit, so deactivation cannot race a new batch.
+    if not preview:
+        await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
+    implicit_version = schema_version_id is None
+    if implicit_version:
+        template_id = await session.scalar(select(ImportSchemaTemplate.id).where(
+            ImportSchemaTemplate.builtin_key == f"default-{kind}"))
+        selected_id = await session.scalar(select(ImportSchemaVersion.id).where(
+            ImportSchemaVersion.template_id == template_id, ImportSchemaVersion.number == 1))
+    else:
+        selected_id = schema_version_id
+        template_id = await session.scalar(select(ImportSchemaVersion.template_id).where(ImportSchemaVersion.id == selected_id))
+    if template_id is None or selected_id is None:
+        raise HTTPException(404, "Schema version not found")
+    template = await get_template(session, template_id, user, lock=not preview)
+    version = await get_version(session, template.id, selected_id, lock=not preview)
+    rules = await version_rules(session, version)
+    if rules.digest() != version.rules_hash:
+        raise HTTPException(409, "Schema rule checksum mismatch")
+    legacy_digest = hashlib.sha256(content + b"\0" + kind.encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([legacy_digest, version.id, version.rules_hash],
+                                            separators=(",", ":")).encode()).hexdigest()
+    if not preview:
         previous = await session.scalar(select(ImportBatch).where(
-            ImportBatch.owner_id == owner_id, ImportBatch.idempotency_key == idempotency_key))
-        if previous and previous.content_hash == digest:
-            return ImportResult(batch_id=previous.id, row_count=previous.row_count, preview=False, replayed=True)
-        raise HTTPException(409, "Import conflicted; no rows imported") from None
-    return ImportResult(batch_id=batch.id, row_count=len(rows), preview=False)
+            ImportBatch.owner_id == user.id, ImportBatch.idempotency_key == idempotency_key).with_for_update())
+        if previous:
+            same = (previous.content_hash == fingerprint if previous.schema_version_id is not None
+                    else implicit_version and previous.content_hash == legacy_digest)
+            if not same:
+                raise HTTPException(409, "Idempotency key already used for different content or schema version")
+            return ImportResult(batch_id=previous.id, row_count=previous.row_count, preview=False, replayed=True,
+                schema_version_id=previous.schema_version_id, rules_hash=previous.rules_hash,
+                fingerprint=previous.content_hash)
+    if version.status != "published" or not template.is_active or not version.is_active:
+        raise HTTPException(409, "Select an active published schema version")
+    rows, ignored = validate_source(content, file.filename or "", rules)
+    known_categories = set((await session.scalars(select(Category.id))).all())
+    category_rule = next(f for f in rules.fields if f.target_field == "category_id")
+    missing = [{"row": i, "errors": [{"stage": "category", "source_field": category_rule.source_field,
+                "target_field": "category_id", "message": "Category does not exist"}]}
+               for i, row in enumerate(rows, 1) if row.category_id not in known_categories]
+    if missing:
+        raise HTTPException(422, {"message": "Unknown categories; no rows imported", "rows": missing[:50], "error_rows": len(missing)})
+    if preview:
+        samples = []
+        for row in rows[:5]:
+            sample = row.model_dump(mode="json")
+            sample["timestamp"] = row.timestamp.replace(tzinfo=timezone.utc).isoformat()
+            samples.append(sample)
+        return ImportResult(row_count=len(rows), preview=True, schema_version_id=version.id,
+            rules_hash=version.rules_hash, fingerprint=fingerprint, normalized_sample=samples, ignored_fields=ignored)
+    batch = ImportBatch(owner_id=user.id, idempotency_key=idempotency_key,
+        content_hash=fingerprint, row_count=len(rows), schema_version_id=version.id,
+        rules_hash=version.rules_hash, schema_snapshot=rules.snapshot())
+    session.add(batch)
+    await session.flush()
+    session.add_all([Record(**row.model_dump(), owner_id=user.id, source="import", import_batch_id=batch.id) for row in rows])
+    audit(session, user, "record.import", batch.id, f"rows={len(rows)},schema_version={version.id}")
+    await session.commit()
+    return ImportResult(batch_id=batch.id, row_count=len(rows), preview=False,
+        schema_version_id=version.id, rules_hash=version.rules_hash, fingerprint=fingerprint)

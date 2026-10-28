@@ -9,5 +9,6 @@
 - 保留單一 `compose.yaml` 管理方式，不自行增加環境專用 Compose 檔。
 - 文件更新不得公開 `.env` 實際值、密碼雜湊、JWT 或本機絕對路徑；使用可攜的相對連結。
 - 修改文件管理、README 或架構文件時，使用 `$data-monitor-project-management` skill；版本化內容在 `.agents/skills/data-monitor-project-management/SKILL.md`，一般 Codex 環境可將該資料夾安裝至使用者 skills 目錄。
+- 開發完成並通過必要檢查後，自動將本次變更 git commit 到目前所在分支，不自行切換分支。提交前檢查差異，只納入本次工作，排除憑證及使用者其他未完成變更；不可自行 git push。
 
 可分享的文件分類說明見 [文件管理規範](docs/documentation-policy.md)。

@@ -1,12 +1,12 @@
-import hashlib
 import json
 import os
 from datetime import datetime
-from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
 import streamlit as st
+
+from import_ui import render_import_page, render_schema_page
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -15,6 +15,7 @@ st.caption("使用者與資料管理")
 
 
 def request(method, path, **kwargs):
+    raw = kwargs.pop("raw", False)
     headers = kwargs.pop("headers", {})
     if "token" in st.session_state:
         headers["Authorization"] = f"Bearer {st.session_state['token']}"
@@ -23,7 +24,7 @@ def request(method, path, **kwargs):
         st.session_state.clear()
         st.rerun()
     response.raise_for_status()
-    return response.json() if response.content else None
+    return response.content if raw else (response.json() if response.content else None)
 
 
 def show_error(exc):
@@ -183,34 +184,11 @@ def create_page():
 
 
 def import_page():
-    st.subheader("批次匯入 CSV／JSON")
-    st.caption("UTF-8、上限 2 MiB／1000 筆；全部通過才寫入。請先預檢，再確認匯入。")
-    st.code('title,value,category_id,timestamp\n範例,12.5,1,2026-10-28T10:00:00+08:00', language="text")
-    st.caption("JSON 使用相同欄位的物件陣列；category_id 請參考分類清單。")
-    try:
-        st.dataframe(request("GET", "/api/v1/categories"))
-        file = st.file_uploader("選擇檔案", type=["csv", "json"])
-        if file is None:
-            return
-        content = file.getvalue()
-        if len(content) > 2 * 1024 * 1024:
-            st.error("檔案不可超過 2 MiB")
-            return
-        digest = hashlib.sha256(content + file.name.encode()).hexdigest()
-        if st.session_state.get("import_digest") != digest:
-            st.session_state.update(import_digest=digest, import_key=uuid4().hex, import_valid=False, import_done=False)
-        if st.button("預檢檔案"):
-            result = request("POST", "/api/v1/record-imports", params={"preview": True},
-                headers={"Idempotency-Key": st.session_state["import_key"]}, files={"file": (file.name, content)})
-            st.session_state["import_valid"] = True
-            st.success(f"預檢成功，共 {result['row_count']} 筆")
-        if st.button("確認匯入", disabled=not st.session_state["import_valid"] or st.session_state["import_done"]):
-            result = request("POST", "/api/v1/record-imports",
-                headers={"Idempotency-Key": st.session_state["import_key"]}, files={"file": (file.name, content)})
-            st.session_state["import_done"] = True
-            st.success(f"匯入完成：批次 {result['batch_id']}，{result['row_count']} 筆")
-    except httpx.HTTPError as exc:
-        show_error(exc)
+    render_import_page(request, show_error)
+
+
+def schema_page():
+    render_schema_page(request, show_error)
 
 
 def categories_page():
@@ -240,7 +218,8 @@ else:
     if st.sidebar.button("登出"):
         st.session_state.clear()
         st.rerun()
-    pages = [st.Page(overview_page, title="服務概況"), st.Page(records_page, title="資料列表")]
+    pages = [st.Page(overview_page, title="服務概況"), st.Page(records_page, title="資料列表"),
+             st.Page(schema_page, title="匯入 Schema 範本")]
     if user["role"] in {"admin", "user"}:
         pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
     if user["role"] == "admin":

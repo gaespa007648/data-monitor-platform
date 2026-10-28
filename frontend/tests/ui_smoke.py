@@ -1,7 +1,11 @@
 """Execute Streamlit pages with AppTest against the real FastAPI service."""
 import os
+import sys
+from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
+
+sys.path.insert(0, str(Path.cwd()))
 
 
 def login(username, password):

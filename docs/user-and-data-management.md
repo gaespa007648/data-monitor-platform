@@ -30,9 +30,11 @@
 
 ## CSV／JSON 批量匯入
 
-「批次匯入」頁先選檔案與預檢，全部驗證通過後再確認匯入。每個檔案最多 **2 MiB、1000 筆**，使用 UTF-8（可含 BOM）。整個 HTTP request 另限制為 2 MiB 加 64 KiB multipart 開銷，超過回傳 413。
+「批次匯入」頁先選取 MariaDB 中已發布且啟用的 schema 範本版本，再選檔案與預檢，全部驗證通過後才確認匯入。Schema 可設定來源欄名及對應的四個固定業務欄位，data_type 為選填，未指定時仍須符合正式資料限制。
 
-CSV 欄位須恰好為以下四個名稱，順序不限：
+每個檔案最多 **2 MiB、1000 筆**，使用 UTF-8（可含 BOM）。整個 HTTP request 另限制為 2 MiB 加 64 KiB multipart 開銷，超過回傳 413。完整的設定、發布、產生範本資料、預檢及匯入流程見 [Streamlit 前端操作手冊](streamlit-user-guide.md)。
+
+內建相容範本使用以下四個來源名稱，順序不限；自訂範本則使用其定義的來源欄名：
 
 ```csv
 title,value,category_id,timestamp
@@ -47,6 +49,8 @@ JSON 使用相同欄位的物件陣列，例如：
 
 category_id 請以分類清單的實際 id 為準。任何一列不符合規則都不寫入；回應包含資料列序號（從 1 起算，不含 CSV 標題列）與欄位原因，最多列出 50 列錯誤。
 
-API 使用 `POST /api/v1/record-imports`，multipart file 欄位名為 file，必要 header 為 Idempotency-Key。`preview=true` 只驗證，不入庫。確認匯入後，相同使用者、相同 key 與相同檔案內容重送會回傳同一批次；同 key 配不同內容回傳 409。不同 key 代表新的匯入，即使內容相同仍會建立新資料。
+API 使用 `POST /api/v1/record-imports`，multipart file 欄位名為 file，必要 header 為 Idempotency-Key，以 schema_version_id query parameter 指定版本。`preview=true` 只驗證，不入庫。確認匯入後，相同使用者、相同 key、檔案及規則版本重送會回傳同一批次；同 key 配不同內容或版本回傳 409。不同 key 代表新的匯入，即使內容相同仍會建立新資料。
+
+`/api/v1/import-schemas` 與 `/versions` 子資源管理範本及版本，發布後規則不可覆寫。User 可管理自己的私有範本，Admin 另可管理共享範本，Viewer 僅可檢視共享規則。`GET /api/v1/record-imports/{id}` 供建立者或 Admin 查閱批次規則快照；舊批次標示 legacy，不偽造歷史規則。舊 API 省略版本時套用內建相容版本，新介面一律明確指定。
 
 匯入與稽核同一交易提交；同一使用者的匯入依序執行。此功能是有限大小的同步匯入，大型檔案需先拆分，尚無背景工作與進度追蹤。

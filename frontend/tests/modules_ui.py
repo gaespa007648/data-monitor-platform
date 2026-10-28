@@ -1,9 +1,12 @@
 """AppTest exercises page functions against the real API (not browser rendering)."""
 import os
+import sys
 from pathlib import Path
 
 import httpx
 from streamlit.testing.v1 import AppTest
+
+sys.path.insert(0, str(Path.cwd()))
 
 base = os.getenv("API_BASE_URL", "http://api:8000")
 username = os.environ["TEST_UI_USERNAME"]

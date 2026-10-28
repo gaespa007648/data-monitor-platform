@@ -42,7 +42,7 @@ Compose 使用 `depends_on` 的健康與成功完成條件控制啟動相依。m
 
 所有應用資料讀寫都經 SQLAlchemy Async ORM 與 asyncmy。每次工作使用獨立 AsyncSession，交易結束後歸還連線；SQLAlchemy Engine 設定 pool_size=5、max_overflow=5、pool_pre_ping、1800 秒回收及 30 秒等待上限。Alembic operations 管理 schema，不在 API 啟動時自動 create_all。
 
-ORM 模型包含 User、Category、Record、ImportBatch 與 AuditLog，分別管理帳號、分類、資料記錄、匯入冪等批次及操作稽核。Record 使用固定精度數值、UTC 時間、建立者與版本欄位；寫入與稽核同一交易提交。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
+ORM 模型包含 User、Category、Record、ImportBatch、AuditLog，以及匯入 Schema 範本、版本與欄位規則。範本支援私有／共享、選填 data_type、不可改寫的發布版本；ImportBatch 保存版本參照與規則快照。Record 仍維持四個固定業務欄位，使用固定精度數值、UTC 時間、建立者與版本欄位；寫入與稽核同一交易提交。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
 
 MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-monitor-platform_mariadb_data`。一般 `down` 與容器重建會保留資料，`down -v` 會刪除資料。Volume 不是備份；正式部署仍需另建備份及還原程序。
 

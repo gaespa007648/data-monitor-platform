@@ -17,6 +17,7 @@ from app.rate_limit import limit
 from app.schemas import Registration
 from app.security import create_token, dummy_hash, password_hash
 from app.records import router as records_router
+from app.import_templates import router as schemas_router
 from app.request_limits import RequestBodyLimit
 
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Data Monitor Platform API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(RequestBodyLimit)
 app.include_router(records_router)
+app.include_router(schemas_router)
 
 
 class LoginRequest(BaseModel):

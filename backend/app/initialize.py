@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.database import SessionFactory, engine
 from app.models import Category, User
 from app.security import password_hash
+from app.import_templates import seed_builtin_templates
 
 
 async def seed_demo_users():
@@ -42,6 +43,7 @@ async def initialize():
         for name in ["一般", "溫度", "濕度"]:
             if await session.scalar(select(Category.id).where(Category.name == name)) is None:
                 session.add(Category(name=name))
+        await seed_builtin_templates(session)
     await seed_demo_users()
 
 

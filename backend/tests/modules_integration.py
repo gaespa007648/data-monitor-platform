@@ -173,7 +173,7 @@ class ModulesTests(unittest.TestCase):
         self.assertEqual(result["batch_id"], replay["batch_id"])
         self.assertTrue(replay["replayed"])
         self.assertEqual(count(), baseline + 2)
-        call("/api/v1/record-imports", "POST", file=("data.json", b"[]"), token=token, key=key, expected=422)
+        call("/api/v1/record-imports", "POST", file=("data.json", b"[]"), token=token, key=key, expected=409)
         different = ("data.json", json.dumps([self.payload(title="different")]).encode())
         call("/api/v1/record-imports", "POST", file=different, token=token, key=key, expected=409)
         csv = f'title,value,category_id,timestamp\nCSV,7.25,{self.category},2026-10-28T10:00:00+08:00\n'.encode()
