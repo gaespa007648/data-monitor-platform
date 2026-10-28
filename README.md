@@ -2,7 +2,7 @@
 
 即時資料分析與監控系統，採 FastAPI 提供 API、MariaDB 持久化資料、Streamlit 提供互動介面。
 
-目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入與每頁 10 筆的前端資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
+目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入、篩選與統計圖表，以及每頁 10 筆的前端資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
 
 ## 技術棧
 

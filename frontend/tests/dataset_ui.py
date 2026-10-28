@@ -136,10 +136,11 @@ with httpx.Client(base_url=base, timeout=30) as client:
 
     with patch("dataset_ui.render_table", return_value=None):
         app = page("analysis_page")
+        assert [element.value for element in app.subheader] == ["選擇數據集"]
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
     assert widget(app, "number_input", "頁碼")
-    assert any(element.value == "資料檢視" for element in app.subheader)
+    assert [element.value for element in app.subheader] == ["選擇數據集", "資料分析", "數據檢視"]
     assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):

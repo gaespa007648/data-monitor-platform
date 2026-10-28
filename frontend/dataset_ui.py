@@ -11,6 +11,7 @@ import httpx
 import streamlit as st
 
 from analysis_table import render_table
+from analysis_ui import render_analysis
 
 
 def preview_rows(content, kind, skip_first_row, fields):
@@ -54,7 +55,7 @@ def field_editor(key, append=False):
     return fields
 
 
-def choose_dataset(request, prefix, writable=False, show_page=True):
+def choose_dataset(request, prefix, writable=False, show_page=True, require_selection=False):
     page = st.number_input("數據集清單頁碼", min_value=1, step=1, key=prefix+"_datasets_page") if show_page else 1
     result = request("GET", "/api/v1/datasets", params={"page": page, "page_size": 100})
     rows = result["items"]
@@ -73,8 +74,9 @@ def choose_dataset(request, prefix, writable=False, show_page=True):
         return None
     options = {row["id"]: row for row in rows}
     selected = st.selectbox("選擇數據集", list(options), key=prefix+"_dataset",
+        index=None if require_selection else 0, placeholder="請選擇數據集",
         format_func=lambda i: f"{options[i]['name']} · #{i}")
-    return options[selected]
+    return options[selected] if selected is not None else None
 
 
 def show_schema(dataset):
@@ -203,13 +205,15 @@ def render_import_page(request, show_error):
 
 
 def render_analysis_page(request, show_error):
-    st.subheader("資料分析")
-    st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
+    st.subheader("選擇數據集")
     try:
-        dataset = choose_dataset(request, "analysis_dataset", show_page=False)
+        dataset = choose_dataset(request, "analysis_dataset", show_page=False, require_selection=True)
         if dataset is None:
             return
-        st.subheader("資料檢視")
+        st.subheader("資料分析")
+        render_analysis(dataset, request)
+        st.subheader("數據檢視")
+        st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
         sort_key = f"analysis_sort_{dataset['id']}"
         sort = st.session_state.get(sort_key, {"column": None, "direction": "asc"})
         page_key = f"analysis_page_{dataset['id']}_{sort['column']}_{sort['direction']}"
