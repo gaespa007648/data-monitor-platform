@@ -4,6 +4,8 @@ from math import ceil
 import httpx
 import streamlit as st
 
+from ui_heading import page_title, section
+
 
 PAGE_SIZE = 20
 ROLES = ("admin", "user", "viewer")
@@ -19,7 +21,7 @@ def byte_size(value):
 
 
 def render_operations(request, show_error):
-    st.markdown("### 系統狀態監控")
+    section("系統狀態監控")
     for title, path, key in (("FastAPI", "/health/live", "status"),
                              ("MariaDB", "/health/ready", "database")):
         try:
@@ -29,7 +31,7 @@ def render_operations(request, show_error):
         except httpx.HTTPError:
             st.error(f"{title}：無法連線或檢查失敗")
 
-    st.markdown("### 資料庫狀態監控")
+    section("資料庫狀態監控")
     try:
         metrics = request("GET", "/api/v1/system/database")
         columns = st.columns(4)
@@ -50,7 +52,7 @@ def render_operations(request, show_error):
     except httpx.HTTPError as exc:
         show_error(exc)
 
-    st.markdown("### 系統日誌")
+    section("系統日誌")
     page = st.session_state.setdefault("system_audit_page", 1)
     try:
         result = request("GET", "/api/v1/system/audit-logs", params={"page": page, "page_size": PAGE_SIZE})
@@ -68,67 +70,28 @@ def render_operations(request, show_error):
     else:
         st.info("目前沒有操作紀錄。")
     st.caption(f"共 {result['total']} 筆 · 第 {page}／{total_pages} 頁。記錄成功寫入的操作；瀏覽與登入不列入。")
-    if total_pages > 1:
-        left, middle, right = st.columns([1, 2, 1])
-        if left.button("上一頁", key="audit_previous", disabled=page == 1):
-            st.session_state["system_audit_page"] = page - 1
-            st.rerun()
-        middle.write(f"{page} / {total_pages}")
-        if right.button("下一頁", key="audit_next", disabled=page == total_pages):
-            st.session_state["system_audit_page"] = page + 1
-            st.rerun()
+    render_pagination(page, total_pages, "system_audit_page")
 
 
-def page_items(current, total):
-    """Show six nearby page numbers, with the first and last page as anchors."""
-    if total <= 8:
-        return list(range(1, total + 1))
-    start = max(1, min(current - 2, total - 5))
-    end = start + 5
-    pages = list(range(start, end + 1))
-    if start > 1:
-        pages = [1, *(["…"] if start > 2 else []), *pages]
-    if end < total:
-        pages.extend(["…"] if end < total - 1 else [])
-        pages.append(total)
-    return pages
-
-
-def render_pagination(page, total_pages):
-    st.markdown("""<style>
-    .st-key-system_pagination button {min-width:2.25rem; height:2.25rem; border-radius:.6rem; padding:0;}
-    .st-key-system_pagination button[kind="primary"] {background:#ff6b00; border-color:#ff6b00; color:white;}
-    .st-key-system_pagination button[kind="primary"]:hover {background:#e65f00; border-color:#e65f00;}
-    </style>""", unsafe_allow_html=True)
-    items = page_items(page, total_pages)
-    with st.container(key="system_pagination"):
-        columns = st.columns([0.6] * (len(items) + 2) + [6], gap="small")
-        if columns[0].button("‹", key="system_prev", help="上一頁", disabled=page == 1,
-                             use_container_width=True):
-            st.session_state["system_admin_page"] = page - 1
-            st.rerun()
-        for column, item in zip(columns[1:], items):
-            if item == "…":
-                column.markdown("<div style='text-align:center;padding-top:.3rem'>…</div>",
-                                unsafe_allow_html=True)
-            elif column.button(str(item), key=f"system_page_{item}",
-                               type="primary" if item == page else "secondary",
-                               use_container_width=True) and item != page:
-                st.session_state["system_admin_page"] = item
-                st.rerun()
-        if columns[len(items) + 1].button("›", key="system_next", help="下一頁",
-                                          disabled=page == total_pages, use_container_width=True):
-            st.session_state["system_admin_page"] = page + 1
-            st.rerun()
+def render_pagination(page, total_pages, state_key):
+    left, middle, right = st.columns([1, 2, 1])
+    if left.button("上一頁", key=f"{state_key}_previous", disabled=page == 1):
+        st.session_state[state_key] = page - 1
+        st.rerun()
+    middle.markdown(f"<div style='text-align:center'>{page} / {total_pages}</div>",
+                    unsafe_allow_html=True)
+    if right.button("下一頁", key=f"{state_key}_next", disabled=page == total_pages):
+        st.session_state[state_key] = page + 1
+        st.rerun()
 
 
 def render_system_admin_page(request, show_error, current_user):
-    st.subheader("系統管理")
+    page_title("系統管理")
     if current_user["role"] != "admin":
         st.warning("無權限查看。此頁僅供 Admin 使用。")
         return
 
-    st.markdown("### 使用者列表")
+    section("使用者列表")
     if st.session_state.pop("system_admin_saved", False):
         st.success("使用者角色已更新。")
     page = st.session_state.setdefault("system_admin_page", 1)
@@ -172,5 +135,5 @@ def render_system_admin_page(request, show_error, current_user):
                 show_error(exc)
 
     st.caption(f"共 {result['total']} 位使用者 · 第 {page}／{total_pages} 頁")
-    render_pagination(page, total_pages)
+    render_pagination(page, total_pages, "system_admin_page")
     render_operations(request, show_error)

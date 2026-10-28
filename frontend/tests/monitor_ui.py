@@ -35,7 +35,8 @@ app = AppTest.from_string(source).run()
 assert not app.exception
 app.selectbox[0].set_value(1).run()
 assert not app.exception
-assert [item.value for item in app.subheader] == ["新增即時監控", "查看即時監控"]
+assert [item.value for item in app.title] == ["即時監控"]
+assert [item.value for item in app.header] == ["新增即時監控", "查看即時監控"]
 app.multiselect[0].set_value(["value", "label"]).run()
 assert not app.exception
 assert app.checkbox[0].value is True
@@ -60,7 +61,7 @@ active = AppTest.from_string(active_source).run()
 assert not active.exception
 active.selectbox[1].set_value(3).run()
 assert not active.exception
-assert any("即時匯入資料數" in heading.value for heading in active.markdown)
+assert any("即時匯入資料數" == heading.value for heading in active.subheader)
 workbook = load_workbook(BytesIO(alert_excel(
     {"fields": [{"name": "value", "data_type": "decimal"}]},
     [{"id": 4, "record_id": 7, "created_at": "2026-10-28T00:00:00+00:00",

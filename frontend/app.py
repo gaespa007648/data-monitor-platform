@@ -8,11 +8,10 @@ from auth_storage import browser_token
 from dataset_ui import render_dataset_page, render_manage_records_page, render_analysis_page
 from monitor_ui import render_monitor_page, stop_generator
 from system_admin_ui import render_system_admin_page
+from ui_heading import page_title
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
-st.title("即時資料分析與監控系統")
-st.caption("使用者與資料管理")
 
 
 def request(method, path, **kwargs):
@@ -41,6 +40,7 @@ def show_error(exc):
 
 
 def login_page():
+    page_title("登入")
     with st.form("login"):
         username = st.text_input("帳號", max_chars=64)
         password = st.text_input("密碼", type="password", max_chars=256)
@@ -61,7 +61,7 @@ def login_page():
 
 
 def registration_page():
-    st.subheader("註冊使用者")
+    page_title("註冊使用者")
     st.caption("帳號為 3–64 個英文字母、數字或底線；密碼至少 12 字元。新帳號固定為 User。")
     with st.form("register"):
         username = st.text_input("新帳號", max_chars=64)
@@ -80,7 +80,7 @@ def registration_page():
 
 
 def overview_page():
-    st.subheader("服務概況")
+    page_title("服務概況")
     try:
         health = request("GET", "/health/ready")
         st.success(f"FastAPI 正常 · MariaDB {health['database']}")

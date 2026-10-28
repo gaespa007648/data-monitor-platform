@@ -12,6 +12,7 @@ from websockets.sync.client import connect
 from dataset_ui import choose_dataset
 from display_format import display_number, display_rows
 from export_utils import EXCEL_MIME, excel_bytes, safe_filename_part
+from ui_heading import page_title, section, subsection
 
 
 def alert_rows(alerts, dataset, formatted=True):
@@ -48,7 +49,7 @@ def load_alerts(request, monitor_id):
 
 
 def render_new_monitor(request, show_error):
-    st.subheader("新增即時監控")
+    section("新增即時監控")
     try:
         dataset = choose_dataset(request, "monitor_create", writable=True, show_page=False,
                                  require_selection=True)
@@ -60,11 +61,11 @@ def render_new_monitor(request, show_error):
         return
     with st.container(border=True):
         name = st.text_input("監控名稱", value=f"{dataset['name']} 即時監控", max_chars=100)
-        st.markdown("**即時圖表設定**")
+        subsection("即時圖表設定")
         chart_type = st.selectbox("圖表類型", ["折線圖", "柱狀圖"])
         window = st.number_input("追蹤時間 (秒)", min_value=5, max_value=86400, value=60)
         interval = st.number_input("記錄頻率 (秒)", min_value=1, max_value=3600, value=1)
-        st.markdown("**異常告警**")
+        subsection("異常告警")
         options = [field["name"] for field in dataset["fields"]
                    if field.get("data_type") in {"integer", "decimal", "string"}]
         selected = st.multiselect("追蹤異常的欄位", options)
@@ -113,7 +114,7 @@ def _live_content(request, show_error, monitor, dataset):
     except httpx.HTTPError as exc:
         show_error(exc)
         return
-    st.markdown("#### 即時匯入資料數")
+    subsection("即時匯入資料數")
     points = snapshot["points"]
     if points:
         frame = pd.DataFrame(points)
@@ -123,7 +124,7 @@ def _live_content(request, show_error, monitor, dataset):
             st.line_chart(frame, y="count", x_label="時間 (UTC)", y_label="新增筆數")
         else:
             st.bar_chart(frame, y="count", x_label="時間 (UTC)", y_label="新增筆數")
-    st.markdown("#### 異常資料")
+    subsection("異常資料")
     st.caption(f"共 {snapshot['alert_total']} 筆，顯示最新 10 筆。")
     if snapshot["alerts"]:
         st.dataframe(alert_rows(snapshot["alerts"], dataset), hide_index=True,
@@ -186,7 +187,7 @@ def stop_generator():
 
 
 def render_generator(dataset, api_base_url, token):
-    st.subheader("模擬生成器")
+    section("模擬生成器")
     with st.expander("模擬資料生成器"):
         st.caption("每秒依數據集 Schema 隨機產生一筆資料。僅限具有該數據集寫入權的使用者。")
         control = st.session_state.get("monitor_generator")
@@ -218,9 +219,9 @@ def render_generator(dataset, api_base_url, token):
 
 
 def render_monitor_page(request, show_error, api_base_url, token):
+    page_title("即時監控")
     render_new_monitor(request, show_error)
-    st.divider()
-    st.subheader("查看即時監控")
+    section("查看即時監控")
     try:
         monitors = request("GET", "/api/v1/monitors")
         if not monitors:

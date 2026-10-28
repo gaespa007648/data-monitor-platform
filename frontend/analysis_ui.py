@@ -7,6 +7,7 @@ from statistics import median, quantiles
 import altair as alt
 import pandas as pd
 import streamlit as st
+from ui_heading import subsection
 
 from display_format import CHART_NUMBER_FORMAT, chart_number, display_bounds, display_number
 from export_utils import EXCEL_MIME, excel_bytes, safe_filename_part
@@ -254,7 +255,7 @@ def render_statistics(dataset, rows):
 
 def render_analysis(dataset, request):
     rows = load_records(request, dataset["id"])
-    st.markdown("### 篩選器")
+    subsection("篩選器")
     conditions = render_filters(dataset, rows)
     if conditions is None:
         st.download_button("下載 Excel", data=b"", disabled=True,
@@ -267,5 +268,5 @@ def render_analysis(dataset, request):
         mime=EXCEL_MIME, key=f"analysis_excel_{dataset['id']}")
     if not conditions:
         st.caption("請先選擇至少一個篩選欄位，才能下載 Excel。")
-    st.markdown("### 統計分析")
+    subsection("統計分析")
     render_statistics(dataset, filtered)

@@ -118,7 +118,8 @@ with httpx.Client(base_url=base, timeout=30) as client:
     app = page("manage_page")
     assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
     widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
-    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視", "匯入資料"]
+    assert [element.value for element in app.title] == ["管理數據集"]
+    assert [element.value for element in app.header] == ["數據檢視", "匯入資料"]
     assert widget(app, "radio", "匯入方式").value == "手動新增"
     for name, value in [("sepal_length", "5.1"), ("sepal_width", "3.5"),
                         ("petal_length", "1.4"), ("petal_width", "0.2"),
@@ -157,11 +158,11 @@ with httpx.Client(base_url=base, timeout=30) as client:
 
     with patch("dataset_ui.render_table", return_value=None):
         app = page("manage_page")
-        assert [element.value for element in app.subheader] == ["管理數據集"]
+        assert [element.value for element in app.title] == ["管理數據集"]
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
     assert widget(app, "number_input", "頁碼")
-    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視", "匯入資料"]
+    assert [element.value for element in app.header] == ["數據檢視", "匯入資料"]
     assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
@@ -203,7 +204,8 @@ with httpx.Client(base_url=base, timeout=30) as client:
         analysis = page("analysis_page")
         widget(analysis, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not analysis.exception
-    assert [element.value for element in analysis.subheader] == ["選擇數據集", "資料分析"]
+    assert [element.value for element in analysis.title] == ["資料分析"]
+    assert [element.value for element in analysis.header] == ["選擇數據集", "資料分析"]
     assert not any(element.label == "頁碼" for element in analysis.number_input)
 
 print("PASS: dataset management table sorting, deletion and ten-row pagination; analysis has no table")

@@ -3,24 +3,15 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-from system_admin_ui import page_items
-
-
-assert page_items(1, 67) == [1, 2, 3, 4, 5, 6, "…", 67]
-assert page_items(34, 67) == [1, "…", 32, 33, 34, 35, 36, 37, "…", 67]
-assert page_items(67, 67) == [1, "…", 62, 63, 64, 65, 66, 67]
-assert page_items(1, 2) == [1, 2]
-
 pagination = AppTest.from_string('''
 import streamlit as st
 from system_admin_ui import render_pagination
-render_pagination(st.session_state.setdefault("system_admin_page", 1), 67)
+render_pagination(st.session_state.setdefault("system_admin_page", 1), 3, "system_admin_page")
 ''').run()
 assert not pagination.exception
-assert [button.label for button in pagination.button] == ["‹", "1", "2", "3", "4", "5", "6", "67", "›"]
-next(button for button in pagination.button if button.label == "67").click().run()
-assert not pagination.exception and pagination.session_state["system_admin_page"] == 67
-assert [button.label for button in pagination.button] == ["‹", "1", "62", "63", "64", "65", "66", "67", "›"]
+assert [button.label for button in pagination.button] == ["上一頁", "下一頁"]
+next(button for button in pagination.button if button.label == "下一頁").click().run()
+assert not pagination.exception and pagination.session_state["system_admin_page"] == 2
 
 
 viewer_source = '''
@@ -70,20 +61,20 @@ render_system_admin_page(request, lambda exc: st.error(str(exc)),
 '''
 admin = AppTest.from_string(admin_source).run()
 assert not admin.exception
-assert admin.subheader[0].value == "系統管理"
-assert admin.markdown[0].value == "### 使用者列表"
-assert [item.value for item in admin.markdown if item.value.startswith("### ")] == [
-    "### 使用者列表", "### 系統狀態監控", "### 資料庫狀態監控", "### 系統日誌"]
+assert [item.value for item in admin.title] == ["系統管理"]
+assert [item.value for item in admin.header] == [
+    "使用者列表", "系統狀態監控", "資料庫狀態監控", "系統日誌"]
 assert len(admin.dataframe[0].value) == 20
 assert not admin.number_input
-assert [button.label for button in admin.button if button.label in {"‹", "1", "2", "›"}] == ["‹", "1", "2", "›"]
+assert [button.label for button in admin.button if button.label in {"上一頁", "下一頁"}] == [
+    "上一頁", "下一頁", "上一頁", "下一頁"]
 assert not admin.selectbox
-next_button = next(button for button in admin.button if button.label == "›")
+next_button = next(button for button in admin.button if button.key == "system_admin_page_next")
 next_button.click().run()
 assert not admin.exception
 assert len(admin.dataframe[0].value) == 5
 assert admin.session_state["system_admin_page"] == 2
-previous_button = next(button for button in admin.button if button.label == "‹")
+previous_button = next(button for button in admin.button if button.key == "system_admin_page_previous")
 previous_button.click().run()
 assert not admin.exception and admin.session_state["system_admin_page"] == 1
 

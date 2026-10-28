@@ -13,6 +13,7 @@ import streamlit as st
 from analysis_table import render_table
 from analysis_ui import render_analysis
 from display_format import display_rows
+from ui_heading import page_title, section
 
 
 def preview_rows(content, kind, skip_first_row, fields):
@@ -87,7 +88,7 @@ def show_schema(dataset):
 
 
 def render_dataset_page(request, show_error, navigate_to_manage=None):
-    st.subheader("建立數據集 Dataset")
+    page_title("建立數據集")
     st.caption("每個數據集可自訂 1–100 個欄位；建立後只能新增欄位。")
     user = st.session_state["user"]
     mode = st.radio("數據集操作", ["建立數據集", "編輯數據集"],
@@ -119,7 +120,7 @@ def render_dataset_page(request, show_error, navigate_to_manage=None):
         if not dataset["can_write"]:
             st.info("僅建立者或 Admin 可新增欄位，目前僅供檢視。")
             return
-        st.markdown("**新增欄位**")
+        section("新增欄位")
         st.caption("只能新增未使用的名稱，不能更改原欄位。新欄位不回填舊資料；必填設定僅約束之後新增的資料。")
         fields = field_editor(f"append_{dataset['id']}_{dataset['schema_version']}", append=True)
         if st.button("新增欄位"):
@@ -209,7 +210,7 @@ def render_batch_import(dataset, request, show_error):
 
 
 def render_manage_records_page(request, show_error):
-    st.subheader("管理數據集")
+    page_title("管理數據集")
     try:
         dataset = choose_dataset(request, "manage_records", show_page=False, require_selection=True)
         if dataset is None:
@@ -220,7 +221,7 @@ def render_manage_records_page(request, show_error):
         imported = st.session_state.pop(f"manage_imported_{dataset['id']}", None)
         if imported is not None:
             st.success(f"已匯入 {imported['row_count']} 筆，批次 #{imported['batch_id']}。")
-        st.subheader("數據檢視")
+        section("數據檢視")
         st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
         sort_key = f"manage_sort_{dataset['id']}"
         sort = st.session_state.get(sort_key, {"column": None, "direction": "asc"})
@@ -250,7 +251,7 @@ def render_manage_records_page(request, show_error):
         event = render_table(dataset["id"], columns, rows, sort["column"], sort["direction"])
         st.number_input("頁碼", min_value=1, max_value=total_pages, step=1, key=page_key)
         st.caption(f"共 {result['total']} 筆，第 {page} 頁／共 {total_pages} 頁；每頁最多 10 筆。新增欄位未回填舊資料，空白可能代表缺值或 null。")
-        st.subheader("匯入資料")
+        section("匯入資料")
         if not dataset["can_write"]:
             st.info("僅數據集建立者或 Admin 可匯入資料，目前僅供檢視。")
         else:
@@ -289,11 +290,12 @@ def render_manage_records_page(request, show_error):
 
 
 def render_analysis_page(request, show_error):
-    st.subheader("選擇數據集")
+    page_title("資料分析")
+    section("選擇數據集")
     try:
         dataset = choose_dataset(request, "analysis_dataset", show_page=False, require_selection=True)
         if dataset is not None:
-            st.subheader("資料分析")
+            section("資料分析")
             render_analysis(dataset, request)
     except httpx.HTTPError as exc:
         show_error(exc)

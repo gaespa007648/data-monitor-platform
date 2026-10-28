@@ -97,7 +97,8 @@ with httpx.Client(base_url=base, timeout=60) as client:
         next(element for element in app.selectbox if element.label == "分析欄位").set_value("date").run()
         next(element for element in app.selectbox if element.label == "趨勢目標欄位").set_value("price").run()
     assert not app.exception, app.exception
-    assert [element.value for element in app.subheader] == ["選擇數據集", "資料分析"]
+    assert [element.value for element in app.title] == ["資料分析"]
+    assert [element.value for element in app.header] == ["選擇數據集", "資料分析"]
     assert len(app.date_input) == 2 and len(app.time_input) == 2
     assert chart.called
     with patch("dataset_ui.render_table", return_value=None):
