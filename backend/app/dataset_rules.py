@@ -15,6 +15,7 @@ from app.schemas import utc_time
 class DatasetField(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     name: str = Field(min_length=1, max_length=64)
+    remark: str = Field(default="", max_length=500)
     data_type: Literal["string", "integer", "decimal", "datetime", "boolean"] | None = None
     required: bool = True
     nullable: bool = False
@@ -37,7 +38,13 @@ class DatasetDefinition(BaseModel):
         return self
 
     def digest(self):
-        return hashlib.sha256(json.dumps(self.model_dump(), ensure_ascii=False,
+        # Empty remarks are omitted so schemas saved before this field existed
+        # retain their original checksum and remain appendable.
+        definition = self.model_dump()
+        for field in definition["fields"]:
+            if not field["remark"]:
+                field.pop("remark")
+        return hashlib.sha256(json.dumps(definition, ensure_ascii=False,
                                         sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 

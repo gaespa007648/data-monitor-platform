@@ -15,7 +15,7 @@ from app.dependencies import CurrentUser, Session, require_admin
 from app.models import AuditLog, User
 from app.rate_limit import limit
 from app.schemas import Registration
-from app.security import create_token, dummy_hash, password_hash
+from app.security import ACCESS_TOKEN_EXPIRE_SECONDS, create_token, dummy_hash, password_hash
 from app.records import router as records_router
 from app.import_templates import router as schemas_router
 from app.datasets import router as datasets_router
@@ -47,7 +47,7 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int = 900
+    expires_in: int = ACCESS_TOKEN_EXPIRE_SECONDS
 
 
 class UserResponse(BaseModel):

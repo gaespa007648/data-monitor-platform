@@ -48,7 +48,7 @@ MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-
 
 ## 認證與權限
 
-Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資料庫密碼雜湊後發出有效期 15 分鐘的 HS256 JWT。後續請求使用 Bearer token，後端驗證簽章、期限、issuer、audience，並重新確認帳號存在且啟用。
+Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資料庫密碼雜湊後發出有效期 60 分鐘的 HS256 JWT。後續請求使用 Bearer token，後端驗證簽章、期限、issuer、audience，並重新確認帳號存在且啟用。
 
 - 公開註冊固定建立 user，不能指定角色。
 - admin 可管理全部數據集與資料、建立分類及查看使用者清單。

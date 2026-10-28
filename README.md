@@ -12,7 +12,7 @@
 | 資料庫 | MariaDB 11.7.2、InnoDB、utf8mb4 |
 | 資料存取 | SQLAlchemy 2 Async ORM、asyncmy、連線池 |
 | 遷移 | Alembic，一次性 migrate 服務 |
-| 認證 | JWT HS256（15 分鐘）、Argon2 密碼雜湊、admin/user/viewer 角色 |
+| 認證 | JWT HS256（60 分鐘）、Argon2 密碼雜湊、admin/user/viewer 角色 |
 | 前端 | Streamlit 多頁面、Session State、HTTPX |
 | 容器 | 多階段 Dockerfile、Docker Compose、named volume |
 
@@ -156,7 +156,7 @@ ValueError: Demo passwords must contain at least 12 characters
 docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate api frontend
 ```
 
-不需刪除 MariaDB volume。Streamlit 登出僅清除目前 session；目前未實作 refresh token 與後端登出撤銷，變更密碼前已發出的 access token 在原本的 15 分鐘有效期內仍有效。登入與註冊有單程序 IP 速率限制。
+不需刪除 MariaDB volume。Streamlit 登出僅清除目前 session；目前未實作 refresh token 與後端登出撤銷，變更密碼前已發出的 access token 可使用至其原到期時間，新簽發的權杖有效期為 60 分鐘。登入與註冊有單程序 IP 速率限制。
 
 ## 延伸文件
 

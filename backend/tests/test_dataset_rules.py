@@ -1,4 +1,6 @@
 import unittest
+import hashlib
+import json
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -57,3 +59,17 @@ class DatasetRulesTests(unittest.TestCase):
         for value in ["x"*4097, Decimal("1e100"), Decimal("0.1234567890123"), {"nested": 1}]:
             with self.assertRaises(HTTPException):
                 validate_rows([{"value": value}], schema, "json")
+
+    def test_optional_remark_and_legacy_checksum(self):
+        legacy = {"fields": [{"name": "species", "data_type": "string",
+                              "required": True, "nullable": False}]}
+        old_hash = hashlib.sha256(json.dumps(legacy, ensure_ascii=False,
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        definition = DatasetDefinition.model_validate(legacy)
+        self.assertEqual(definition.fields[0].remark, "")
+        self.assertEqual(definition.digest(), old_hash)
+        documented = DatasetDefinition(fields=[{**legacy["fields"][0], "remark": "鳶尾花品種"}])
+        self.assertEqual(documented.fields[0].remark, "鳶尾花品種")
+        self.assertNotEqual(documented.digest(), old_hash)
+        with self.assertRaises(ValidationError):
+            DatasetDefinition(fields=[{"name": "x", "remark": "x" * 501}])

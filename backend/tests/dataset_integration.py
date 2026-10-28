@@ -18,7 +18,9 @@ class DatasetTests(unittest.TestCase):
         settings = get_settings()
         for name, password in [("admin", settings.demo_admin_password.get_secret_value()),
                                ("viewer", settings.demo_viewer_password.get_secret_value())]:
-            cls.tokens[name] = call("/api/v1/auth/tokens", "POST", {"username": name, "password": password})["access_token"]
+            login = call("/api/v1/auth/tokens", "POST", {"username": name, "password": password})
+            assert login["expires_in"] == 3600
+            cls.tokens[name] = login["access_token"]
         for name in cls.names:
             call("/api/v1/users", "POST", {"username": name, "password": "DatasetTest123!"}, expected=201)
             cls.tokens[name] = call("/api/v1/auth/tokens", "POST", {"username": name, "password": "DatasetTest123!"})["access_token"]
@@ -45,14 +47,17 @@ class DatasetTests(unittest.TestCase):
         ds = self.create()
         path = f"/api/v1/datasets/{ds['id']}"
         self.assertEqual(len(ds["fields"]), 5)
+        self.assertTrue(all(field["remark"] == "" for field in ds["fields"]))
         for method in ["PUT", "PATCH", "DELETE"]:
             call(path+"/fields", method, {"fields": []} if method != "DELETE" else None, token=token, expected=405)
         call(path, "DELETE", token=token, expected=405)
         call(path+"/fields", "POST", {"schema_version": 1, "fields": [{"name": "species", "data_type": "integer"}]}, token=token, expected=422)
         call(path+"/fields", "POST", {"schema_version": 1, "fields": [{"name": "other"}]}, token=self.tokens[self.names[1]], expected=403)
         old_row = call(path+"/records", "POST", {"schema_version": 1, "data": self.row()}, token=token, expected=201)
-        added = call(path+"/fields", "POST", {"schema_version": 1, "fields": [{"name": "notes", "required": False, "nullable": True}]}, token=token, expected=201)
+        added = call(path+"/fields", "POST", {"schema_version": 1, "fields": [
+            {"name": "notes", "remark": "補充觀察", "required": False, "nullable": True}]}, token=token, expected=201)
         self.assertEqual(added["fields"][:5], ds["fields"])
+        self.assertEqual(added["fields"][5]["remark"], "補充觀察")
         self.assertEqual(added["schema_version"], 2)
         call(path+"/fields", "POST", {"schema_version": 1, "fields": [{"name": "stale"}]}, token=token, expected=409)
         call(path+"/records", "POST", {"schema_version": 1, "data": self.row()}, token=token, expected=409)

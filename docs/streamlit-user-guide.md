@@ -6,8 +6,8 @@
 
 1. 開啟「建立數據集」，輸入名稱及選填說明。
 2. 在欄位表新增所需欄位，例如 Iris 的 sepal_length、sepal_width、petal_length、petal_width、species。建立前可增刪尚未儲存的欄位。欄名區分大小寫，不可重複。
-3. 每個欄位的 data_type 可選 string、integer、decimal、datetime、boolean，或留為「未指定」；另設定必填與是否允許 null。按「建立數據集」後，Schema 存入 MariaDB。
-4. 在「管理數據集」選取已建立的數據集，查看現有欄位；只能在下方新增欄位，不能修改或刪除已建立的欄位。新欄位不回填舊資料，必填規則只約束後續資料。
+3. 每個欄位可在「備註」補充欄位名稱的意義（選填，最多 500 字元）；data_type 可選 string、integer、decimal、datetime、boolean，或留為「未指定」。另設定必填與是否允許 null。按「建立數據集」後，Schema 存入 MariaDB。
+4. 在「管理數據集」選取已建立的數據集，查看現有欄位及備註；只能在下方新增欄位及其備註，不能修改或刪除已建立欄位或備註。新欄位不回填舊資料，必填規則只約束後續資料。
 
 每個數據集可定義 1–100 個欄位。Admin 可管理全部，User 只能管理自己建立的數據集，Viewer 只能檢視。所有登入者可讀取共享數據集。
 

@@ -18,11 +18,11 @@ Payload 包含以下必要 claims：
 | --- | --- | --- |
 | sub | 使用者識別 | User id 的字串形式 |
 | iat | 簽發時間 | UTC Unix 時間戳，單位為秒 |
-| exp | 到期時間 | 簽發時間加 15 分鐘 |
+| exp | 到期時間 | 簽發時間加 60 分鐘 |
 | iss | 簽發者 | data-monitor-platform |
 | aud | 接收對象 | data-monitor-api |
 
-權杖有效期固定為 **15 分鐘（900 秒）**，不是滑動到期；呼叫 API 不會延長有效期。登入回應提供 access_token、token_type=bearer 與 expires_in=900。
+權杖有效期固定為 **60 分鐘（3600 秒）**，不是滑動到期；呼叫 API 不會延長有效期。登入回應提供 access_token、token_type=bearer 與 expires_in=3600。
 
 ## 簽發與驗證流程
 
