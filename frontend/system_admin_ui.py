@@ -9,6 +9,49 @@ PAGE_SIZE = 20
 ROLES = ("admin", "user", "viewer")
 
 
+def page_items(current, total):
+    """Show six nearby page numbers, with the first and last page as anchors."""
+    if total <= 8:
+        return list(range(1, total + 1))
+    start = max(1, min(current - 2, total - 5))
+    end = start + 5
+    pages = list(range(start, end + 1))
+    if start > 1:
+        pages = [1, *(["…"] if start > 2 else []), *pages]
+    if end < total:
+        pages.extend(["…"] if end < total - 1 else [])
+        pages.append(total)
+    return pages
+
+
+def render_pagination(page, total_pages):
+    st.markdown("""<style>
+    .st-key-system_pagination button {min-width:2.25rem; height:2.25rem; border-radius:.6rem; padding:0;}
+    .st-key-system_pagination button[kind="primary"] {background:#ff6b00; border-color:#ff6b00; color:white;}
+    .st-key-system_pagination button[kind="primary"]:hover {background:#e65f00; border-color:#e65f00;}
+    </style>""", unsafe_allow_html=True)
+    items = page_items(page, total_pages)
+    with st.container(key="system_pagination"):
+        columns = st.columns([0.6] * (len(items) + 2) + [6], gap="small")
+        if columns[0].button("‹", key="system_prev", help="上一頁", disabled=page == 1,
+                             use_container_width=True):
+            st.session_state["system_admin_page"] = page - 1
+            st.rerun()
+        for column, item in zip(columns[1:], items):
+            if item == "…":
+                column.markdown("<div style='text-align:center;padding-top:.3rem'>…</div>",
+                                unsafe_allow_html=True)
+            elif column.button(str(item), key=f"system_page_{item}",
+                               type="primary" if item == page else "secondary",
+                               use_container_width=True) and item != page:
+                st.session_state["system_admin_page"] = item
+                st.rerun()
+        if columns[len(items) + 1].button("›", key="system_next", help="下一頁",
+                                          disabled=page == total_pages, use_container_width=True):
+            st.session_state["system_admin_page"] = page + 1
+            st.rerun()
+
+
 def render_system_admin_page(request, show_error, current_user):
     st.subheader("系統管理")
     if current_user["role"] != "admin":
@@ -59,15 +102,4 @@ def render_system_admin_page(request, show_error, current_user):
                 show_error(exc)
 
     st.caption(f"共 {result['total']} 位使用者 · 第 {page}／{total_pages} 頁")
-    previous, choose, following = st.columns([1, 2, 1])
-    if previous.button("◀ 上一頁", disabled=page == 1):
-        st.session_state["system_admin_page"] = page - 1
-        st.rerun()
-    chosen = choose.selectbox("選擇頁面", range(1, total_pages + 1), index=page - 1,
-                              key=f"system_page_choice_{page}")
-    if chosen != page:
-        st.session_state["system_admin_page"] = chosen
-        st.rerun()
-    if following.button("下一頁 ▶", disabled=page == total_pages):
-        st.session_state["system_admin_page"] = page + 1
-        st.rerun()
+    render_pagination(page, total_pages)
