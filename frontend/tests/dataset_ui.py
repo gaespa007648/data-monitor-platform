@@ -1,4 +1,5 @@
 """Exercise the dataset pages against the running API with Streamlit AppTest."""
+import json
 import os
 import sys
 from pathlib import Path
@@ -10,6 +11,15 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path.cwd()))
+from dataset_ui import preview_rows
+
+many_csv = b"name,value\n" + b"".join(f"row{i},{i}\n".encode() for i in range(12))
+assert len(preview_rows(many_csv, "csv", True, [{"name": "name"}, {"name": "value"}])) == 5
+assert preview_rows(many_csv, "csv", True, [{"name": "name"}, {"name": "value"}])[0]["name"] == "row0"
+assert len(preview_rows(b"".join(f"row{i},{i}\n".encode() for i in range(12)),
+                        "csv", False, [{"name": "name"}, {"name": "value"}])) == 5
+assert len(preview_rows(json.dumps([{"value": i} for i in range(12)]).encode(),
+                        "json", False, [])) == 5
 
 base = os.getenv("API_BASE_URL", "http://api:8000")
 username = os.environ["TEST_UI_USERNAME"]

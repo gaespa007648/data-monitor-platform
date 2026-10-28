@@ -1,11 +1,28 @@
+import csv
 import hashlib
+import io
 import json
 from datetime import datetime
+from itertools import islice
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
 import streamlit as st
+
+
+def preview_rows(content, kind, skip_first_row, fields):
+    """Show at most five uploaded records; validation still uses the full file."""
+    try:
+        source = content.decode("utf-8-sig")
+        if kind == "json":
+            rows = json.loads(source)
+            return rows[:5] if isinstance(rows, list) else None
+        reader = csv.reader(io.StringIO(source, newline=""), strict=True)
+        headers = next(reader, []) if skip_first_row else [field["name"] for field in fields]
+        return [dict(zip(headers, cells)) for cells in islice(reader, 5)]
+    except (UnicodeDecodeError, ValueError, csv.Error):
+        return None
 
 
 def field_editor(key, append=False):
@@ -145,7 +162,12 @@ def render_import_page(request, show_error):
         if len(content) > 2 * 1024 * 1024:
             st.error("檔案不可超過 2 MiB")
             return
-        st.code(content.decode("utf-8-sig", errors="replace")[:2000], language="text")
+        st.caption("檔案預覽：最多 5 筆資料；按「預檢檔案」會檢查整份檔案。")
+        sample = preview_rows(content, kind, skip_first_row, dataset["fields"])
+        if sample is None:
+            st.info("檔案無法預覽；請按「預檢檔案」查看格式錯誤。")
+        else:
+            st.dataframe(sample, use_container_width=True, hide_index=True)
         digest = hashlib.sha256(content + str(dataset["id"]).encode() + dataset["rules_hash"].encode()
             + kind.encode() + str(skip_first_row).encode()).hexdigest()
         if st.session_state.get("dataset_import_digest") != digest:
