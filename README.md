@@ -2,7 +2,7 @@
 
 即時資料分析與監控系統，採 FastAPI 提供 API、MariaDB 持久化資料、Streamlit 提供互動介面。
 
-目前提供單一 Docker Compose 部署、資料庫遷移、測試帳號、JWT 登入、管理員／檢視者權限、多頁面介面及健康檢查。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
+目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、資料 CRUD、分頁篩選排序、CSV／JSON 批量匯入，以及單一 Docker Compose 部署與資料庫持久化。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
 
 ## 技術棧
 
@@ -12,7 +12,7 @@
 | 資料庫 | MariaDB 11.7.2、InnoDB、utf8mb4 |
 | 資料存取 | SQLAlchemy 2 Async ORM、asyncmy、連線池 |
 | 遷移 | Alembic，一次性 migrate 服務 |
-| 認證 | JWT HS256（15 分鐘）、Argon2 密碼雜湊、admin/viewer 角色 |
+| 認證 | JWT HS256（15 分鐘）、Argon2 密碼雜湊、admin/user/viewer 角色 |
 | 前端 | Streamlit 多頁面、Session State、HTTPX |
 | 容器 | 多階段 Dockerfile、Docker Compose、named volume |
 
@@ -29,7 +29,7 @@ backend/
   migrations/                # Alembic schema 版本
 frontend/
   Dockerfile                 # Streamlit 多階段映像
-  app.py                     # 登入、服務概況、使用者管理頁
+  app.py                     # 註冊登入、概況、資料管理及匯入頁面
 docs/                        # 對外架構、操作與文件管理說明
 ```
 
@@ -108,9 +108,14 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 
 | 方法與路徑 | 功能 |
 | --- | --- |
+| POST `/api/v1/users` | 公開註冊，固定建立 User 角色 |
 | POST `/api/v1/auth/tokens` | JSON 帳密登入，取得 JWT |
 | GET `/api/v1/users/me` | 查看目前登入者 |
 | GET `/api/v1/users` | 管理員取得使用者清單，viewer 回傳 403 |
+| GET／POST `/api/v1/categories` | 查詢分類；僅 Admin 可建立分類 |
+| GET／POST `/api/v1/records` | 資料分頁查詢／建立 |
+| GET／PATCH／DELETE `/api/v1/records/{id}` | 讀取／更新／刪除記錄；寫入須符合角色與擁有者權限 |
+| POST `/api/v1/record-imports` | CSV／JSON 預檢與冪等批次匯入 |
 
 Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer token 欄位，即可測試受保護 API。權杖不包含密碼雜湊，API 回應也不回傳該欄位。
 
@@ -120,8 +125,10 @@ Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer t
 
 | 帳號 | 預設密碼 | 權限 |
 | --- | --- | --- |
-| admin | `AdminDemo123!` | 概況與使用者清單 |
-| viewer | `ViewerDemo123!` | 僅查看自身資訊與概況 |
+| admin | `AdminDemo123!` | 管理全部資料、建立分類及查看使用者清單 |
+| viewer | `ViewerDemo123!` | 查看自身資訊、概況與共享資料；不可寫入 |
+
+也可在 Streamlit「註冊」頁建立自己的 User 帳號，無固定測試密碼。User 可讀取共享資料，建立與匯入資料，僅能修改／刪除自己建立的記錄；Admin 可管理全部記錄。操作方式與格式請見 [使用者與資料管理](docs/user-and-data-management.md)。
 
 **測試帳號的密碼至少需要 12 個字元**：當 `SEED_DEMO_USERS=true` 時，`.env` 中的 `DEMO_ADMIN_PASSWORD` 與 `DEMO_VIEWER_PASSWORD` 都必須符合此限制；帳號名稱沒有至少 12 個字元的要求。目前初始化流程會先驗證這兩個密碼，再檢查帳號是否存在，因此即使資料庫已有帳號，設定值仍須符合限制。
 
@@ -141,11 +148,12 @@ ValueError: Demo passwords must contain at least 12 characters
 docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate api frontend
 ```
 
-不需刪除 MariaDB volume。Streamlit 登出僅清除目前 session；目前未實作 refresh token、後端登出撤銷及登入速率限制，變更密碼前已發出的 access token 在原本的 15 分鐘有效期內仍有效。
+不需刪除 MariaDB volume。Streamlit 登出僅清除目前 session；目前未實作 refresh token 與後端登出撤銷，變更密碼前已發出的 access token 在原本的 15 分鐘有效期內仍有效。登入與註冊有單程序 IP 速率限制。
 
 ## 延伸文件
 
 - [系統架構與架構圖](docs/architecture.md)：容器職責、通訊、認證與資料儲存。
+- [使用者與資料管理](docs/user-and-data-management.md)：角色、資料操作與 CSV／JSON 匯入格式。
 - [JWT 認證機制](docs/jwt-authentication.md)：權杖格式、有效期與驗證流程。
 - [資料庫遷移與連線池管理](docs/database-management.md)：Alembic 版本管理與 SQLAlchemy 連線池核心概念。
 - [操作與疑難排解](docs/operations.md)：設定檢查、啟動問題與測試帳號密碼同步。

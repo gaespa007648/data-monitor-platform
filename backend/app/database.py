@@ -4,6 +4,7 @@ from app.config import get_settings
 
 engine = create_async_engine(
     get_settings().database_url, pool_size=5, max_overflow=5,
+    isolation_level="READ COMMITTED",
     pool_pre_ping=True, pool_recycle=1800, pool_timeout=30,
 )
 SessionFactory = async_sessionmaker(engine, expire_on_commit=False)

@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionFactory, engine
-from app.models import User
+from app.models import Category, User
 from app.security import password_hash
 
 
@@ -37,7 +37,15 @@ async def seed_demo_users():
         await engine.dispose()
 
 
+async def initialize():
+    async with SessionFactory.begin() as session:
+        for name in ["一般", "溫度", "濕度"]:
+            if await session.scalar(select(Category.id).where(Category.name == name)) is None:
+                session.add(Category(name=name))
+    await seed_demo_users()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     command.upgrade(Config("alembic.ini"), "head")
-    asyncio.run(seed_demo_users())
+    asyncio.run(initialize())
