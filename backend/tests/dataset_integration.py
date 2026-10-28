@@ -2,7 +2,6 @@ import asyncio
 import json
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from app.config import get_settings
@@ -86,9 +85,10 @@ class DatasetTests(unittest.TestCase):
         ds = self.create()
         token = self.tokens[self.names[0]]
         path = f"/api/v1/datasets/{ds['id']}"
-        for kind in ["csv", "json"]:
-            with urlopen(Request("http://localhost:8000"+path+f"/sample?file_format={kind}", headers={"Authorization": f"Bearer {token}"}), timeout=10) as response:
-                content = response.read()
+        csv_content = ("sepal_length,sepal_width,petal_length,petal_width,species\n"
+                       "5.1,3.5,1.4,0.2,setosa\n").encode()
+        json_content = json.dumps([self.row()]).encode()
+        for kind, content in [("csv", csv_content), ("json", json_content)]:
             preview = call(path+"/imports?schema_version=1&preview=true", "POST", file=("sample."+kind, content), token=token, expected=201)
             self.assertEqual(preview["row_count"], 1)
             key = uuid4().hex
@@ -106,6 +106,29 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual((first["total"], len(first["items"]), len(second["items"])), (25, 20, 5))
         self.assertFalse({r["id"] for r in first["items"]} & {r["id"] for r in second["items"]})
         call(path+"/records?page_size=21", token=token, expected=422)
+
+    def test_05_csv_first_row_option_and_idempotency(self):
+        ds = self.create()
+        token = self.tokens[self.names[0]]
+        path = f"/api/v1/datasets/{ds['id']}"
+        data = ("sepal_length,sepal_width,petal_length,petal_width,species\n"
+                "5.1,3.5,1.4,0.2,setosa\n").encode()
+        header = call(path+"/imports?schema_version=1&preview=true&skip_first_row=true",
+            "POST", file=("iris.csv", data), token=token, expected=201)
+        self.assertEqual(header["row_count"], 1)
+        call(path+"/imports?schema_version=1&preview=true&skip_first_row=false",
+            "POST", file=("iris.csv", data), token=token, expected=422)
+        no_header = b"5.1,3.5,1.4,0.2,setosa\n4.9,3.0,1.4,0.2,setosa\n"
+        preview = call(path+"/imports?schema_version=1&preview=true&skip_first_row=false",
+            "POST", file=("iris.csv", no_header), token=token, expected=201)
+        self.assertEqual(preview["row_count"], 2)
+        key = uuid4().hex
+        imported = call(path+"/imports?schema_version=1&skip_first_row=false",
+            "POST", file=("iris.csv", no_header), key=key, token=token, expected=201)
+        self.assertEqual(imported["row_count"], 2)
+        call(path+"/imports?schema_version=1&skip_first_row=true",
+            "POST", file=("iris.csv", no_header), key=key, token=token, expected=409)
+        self.assertEqual(call(path+"/records", token=token)["total"], 2)
 
     def test_04_concurrent_append_and_import_schema_conflict(self):
         ds = self.create()

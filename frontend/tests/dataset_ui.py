@@ -85,6 +85,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert current["fields"][5]["remark"] == "觀察註記"
 
     app = page("create_page")
+    assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
     widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     for name, value in [("sepal_length", "5.1"), ("sepal_width", "3.5"),
                         ("petal_length", "1.4"), ("petal_width", "0.2"),
@@ -95,20 +96,32 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 1
 
     app = page("import_page")
+    assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
+    assert not any(item.label == "產生範本資料" for item in app.button)
     widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
-    widget(app, "button", "產生範本資料").click().run()
-    assert not app.exception
-    sample_key = f"dataset_sample_{dataset_id}_2_csv"
-    content = app.session_state[sample_key]
-    assert b"species" in content
+    content = (b"sepal_length,sepal_width,petal_length,petal_width,species,notes\n"
+               b"5.1,3.5,1.4,0.2,setosa,observed\n")
     upload = SimpleNamespace(name="iris.csv", getvalue=lambda: content)
     with patch("streamlit.file_uploader", return_value=upload):
         app.run()
+        assert widget(app, "checkbox", "排除第一列欄名").value
         widget(app, "button", "預檢檔案").click().run()
         assert not app.exception and app.session_state["dataset_import_valid"]
         widget(app, "button", "確認匯入").click().run()
         assert not app.exception and app.session_state["dataset_import_done"]
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 2
+    with patch("streamlit.file_uploader", return_value=upload):
+        widget(app, "checkbox", "排除第一列欄名").uncheck().run()
+        assert not app.exception and not app.session_state["dataset_import_valid"]
+        assert widget(app, "button", "確認匯入").disabled
+    no_header = SimpleNamespace(name="iris.csv", getvalue=lambda: b"4.9,3.0,1.4,0.2,setosa,second\n")
+    with patch("streamlit.file_uploader", return_value=no_header):
+        app.run()
+        widget(app, "button", "預檢檔案").click().run()
+        assert not app.exception and app.session_state["dataset_import_valid"]
+        widget(app, "button", "確認匯入").click().run()
+        assert not app.exception and app.session_state["dataset_import_done"]
+    assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 3
 
     app = page("analysis_page")
     widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
@@ -116,4 +129,4 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert widget(app, "number_input", "資料頁碼")
     assert not any(element.label == "篩選條件" for element in app.selectbox)
 
-print("PASS: dataset create, append-only fields, manual write, generated CSV import, analysis page")
+print("PASS: dataset create, append-only fields, manual write, CSV header option, analysis page")

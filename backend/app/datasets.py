@@ -1,13 +1,11 @@
-import csv
 import hashlib
-import io
 import json
-from datetime import datetime, timezone
+from datetime import timezone
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from pydantic import Field, ValidationError, model_validator
 from sqlalchemy import func, select
 
@@ -179,31 +177,12 @@ async def list_records(dataset_id: int, session: Session, user: CurrentUser,
         "page": page, "page_size": page_size, "dataset": await dataset_output(session, dataset, user)}
 
 
-@router.get("/{dataset_id}/sample")
-async def sample(dataset_id: int, session: Session, user: CurrentUser,
-                 file_format: Literal["csv", "json"] = "csv"):
-    dataset = await find_dataset(session, dataset_id, user)
-    version, definition = await schema_at(session, dataset)
-    samples = {None: "sample", "string": "sample", "integer": 1, "decimal": 1,
-               "datetime": datetime.now(timezone.utc).isoformat(), "boolean": True}
-    row = {field.name: samples[field.data_type] for field in definition.fields}
-    if file_format == "csv":
-        stream = io.StringIO(newline="")
-        writer = csv.DictWriter(stream, fieldnames=list(row))
-        writer.writeheader()
-        writer.writerow({k: str(v).lower() if type(v) is bool else v for k, v in row.items()})
-        content = stream.getvalue().encode("utf-8-sig")
-    else:
-        content = json.dumps([row], ensure_ascii=False, indent=2).encode()
-    return Response(content, media_type="text/csv" if file_format == "csv" else "application/json",
-        headers={"Content-Disposition": f'attachment; filename="dataset-{dataset.id}-v{version.number}.{file_format}"'})
-
-
 @router.post("/{dataset_id}/imports", status_code=201)
 async def import_records(dataset_id: int, session: Session, user: CurrentUser,
     file: Annotated[UploadFile, File()],
     idempotency_key: Annotated[str, Header(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")],
-    schema_version: int = Query(..., ge=1), preview: bool = False):
+    schema_version: int = Query(..., ge=1), preview: bool = False,
+    skip_first_row: bool = True):
     dataset = await find_dataset(session, dataset_id, user, write=True)
     version, definition = await schema_at(session, dataset, schema_version)
     try:
@@ -216,6 +195,7 @@ async def import_records(dataset_id: int, session: Session, user: CurrentUser,
     if kind not in {"csv", "json"}:
         raise HTTPException(422, "Only CSV and JSON files are supported")
     fingerprint = hashlib.sha256(json.dumps([dataset.id, version.number, version.rules_hash, kind,
+        skip_first_row if kind == "csv" else None,
         hashlib.sha256(content).hexdigest()], separators=(",", ":")).encode()).hexdigest()
     if not preview:
         previous = await session.scalar(select(DatasetImportBatch).where(
@@ -226,7 +206,9 @@ async def import_records(dataset_id: int, session: Session, user: CurrentUser,
             return {"batch_id": previous.id, "row_count": previous.row_count, "replayed": True, "preview": False}
     if schema_version != dataset.schema_version:
         raise HTTPException(409, "Dataset schema changed; select it again and repeat preview")
-    rows = parse_source(content, file.filename or "", SimpleNamespace(file_format=kind))
+    rows = parse_source(content, file.filename or "", SimpleNamespace(file_format=kind),
+        csv_fieldnames=[field.name for field in definition.fields],
+        skip_first_row=skip_first_row if kind == "csv" else True)
     payloads = validate_rows(rows, definition, kind)
     if preview:
         return {"preview": True, "row_count": len(rows), "schema_version": version.number,

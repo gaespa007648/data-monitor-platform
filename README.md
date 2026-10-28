@@ -117,8 +117,7 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 | GET `/api/v1/datasets/{id}` | 數據集及目前 Schema |
 | POST `/api/v1/datasets/{id}/fields` | 只新增欄位，保留既有欄位 |
 | GET／POST `/api/v1/datasets/{id}/records` | 每頁最多 20 筆的檢視／單筆建立 |
-| GET `/api/v1/datasets/{id}/sample` | 產生目前 Schema 的 CSV／JSON 範本 |
-| POST `/api/v1/datasets/{id}/imports` | 預檢與冪等批次匯入 |
+| POST `/api/v1/datasets/{id}/imports` | CSV／JSON 預檢與冪等批次匯入；CSV 可設定是否跳過首列欄名 |
 | GET／POST `/api/v1/categories` | 查詢分類；僅 Admin 可建立分類 |
 | GET／POST `/api/v1/records` | 資料分頁查詢／建立 |
 | GET／PATCH／DELETE `/api/v1/records/{id}` | 讀取／更新／刪除記錄；寫入須符合角色與擁有者權限 |
@@ -160,7 +159,7 @@ docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate 
 
 ## 延伸文件
 
-- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：數據集 Schema、手動輸入、範本資料、預檢、匯入與分頁操作。
+- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：數據集 Schema、手動輸入、CSV 首列選項、預檢、匯入與分頁操作。
 - [系統架構與架構圖](docs/architecture.md)：容器職責、通訊、認證與資料儲存。
 - [使用者與資料管理](docs/user-and-data-management.md)：角色、資料操作與 CSV／JSON 匯入格式。
 - [JWT 認證機制](docs/jwt-authentication.md)：權杖格式、有效期與驗證流程。

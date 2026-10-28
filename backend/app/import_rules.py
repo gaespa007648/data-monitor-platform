@@ -82,7 +82,7 @@ def no_duplicates(pairs):
     return result
 
 
-def parse_source(content, filename, rules):
+def parse_source(content, filename, rules, csv_fieldnames=None, skip_first_row=True):
     if not filename.lower().endswith("." + rules.file_format):
         raise HTTPException(422, {"stage": "structure", "message": "File extension does not match schema format"})
     try:
@@ -95,6 +95,11 @@ def parse_source(content, filename, rules):
         else:
             reader = csv.reader(io.StringIO(text, newline=""), strict=True)
             headers = next(reader, [])
+            if not skip_first_row:
+                if not csv_fieldnames:
+                    raise ValueError("CSV field names are required without a header")
+                headers = csv_fieldnames
+                reader = csv.reader(io.StringIO(text, newline=""), strict=True)
             if not headers or len(headers) != len(set(headers)) or any(not h.strip() for h in headers):
                 raise ValueError("CSV headers must be unique and nonempty")
             rows = []

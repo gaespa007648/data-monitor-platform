@@ -32,12 +32,22 @@ def field_editor(key, append=False):
     return fields
 
 
-def choose_dataset(request, prefix, writable=False):
-    page = st.number_input("數據集清單頁碼", min_value=1, step=1, key=prefix+"_datasets_page")
+def choose_dataset(request, prefix, writable=False, show_page=True):
+    page = st.number_input("數據集清單頁碼", min_value=1, step=1, key=prefix+"_datasets_page") if show_page else 1
     result = request("GET", "/api/v1/datasets", params={"page": page, "page_size": 100})
-    rows = [row for row in result["items"] if not writable or row["can_write"]]
+    rows = result["items"]
+    if not show_page:
+        while len(rows) < result["total"]:
+            next_page = len(rows) // 100 + 1
+            batch = request("GET", "/api/v1/datasets",
+                params={"page": next_page, "page_size": 100})["items"]
+            if not batch:
+                break
+            rows.extend(batch)
+    rows = [row for row in rows if not writable or row["can_write"]]
     if not rows:
-        st.info("本頁沒有可用數據集，請先建立數據集或切換清單頁碼。")
+        st.info("沒有可用數據集，請先建立數據集。" if not show_page else
+                "本頁沒有可用數據集，請先建立數據集或切換清單頁碼。")
         return None
     options = {row["id"]: row for row in rows}
     selected = st.selectbox("選擇數據集", list(options), key=prefix+"_dataset",
@@ -89,7 +99,7 @@ def render_dataset_page(request, show_error):
 def render_manual_page(request, show_error):
     st.subheader("建立資料")
     try:
-        dataset = choose_dataset(request, "manual_dataset", writable=True)
+        dataset = choose_dataset(request, "manual_dataset", writable=True, show_page=False)
         if dataset is None:
             return
         show_schema(dataset)
@@ -120,20 +130,14 @@ def render_import_page(request, show_error):
     st.subheader("批次匯入")
     st.caption("先選數據集，CSV／JSON 需符合該數據集的目前 Schema。每檔最多 2 MiB／1000 筆。")
     try:
-        dataset = choose_dataset(request, "import_dataset", writable=True)
+        dataset = choose_dataset(request, "import_dataset", writable=True, show_page=False)
         if dataset is None:
             return
         show_schema(dataset)
         kind = st.selectbox("檔案格式", ["csv", "json"])
-        sample_key = f"dataset_sample_{dataset['id']}_{dataset['schema_version']}_{kind}"
-        if st.button("產生範本資料"):
-            st.session_state[sample_key] = request("GET", f"/api/v1/datasets/{dataset['id']}/sample",
-                params={"file_format": kind}, raw=True)
-        if sample_key in st.session_state:
-            st.download_button("下載範本資料", data=st.session_state[sample_key],
-                file_name=f"dataset-{dataset['id']}-v{dataset['schema_version']}.{kind}",
-                mime="text/csv" if kind == "csv" else "application/json")
         file = st.file_uploader("選擇檔案", type=[kind])
+        skip_first_row = st.checkbox("排除第一列欄名", value=True,
+            help="勾選時第一列作為欄名，不匯入資料；取消勾選時依數據集欄位順序匯入每一列。") if kind == "csv" else False
         if file is None:
             st.session_state.pop("dataset_import_digest", None)
             return
@@ -142,12 +146,15 @@ def render_import_page(request, show_error):
             st.error("檔案不可超過 2 MiB")
             return
         st.code(content.decode("utf-8-sig", errors="replace")[:2000], language="text")
-        digest = hashlib.sha256(content + str(dataset["id"]).encode() + dataset["rules_hash"].encode() + kind.encode()).hexdigest()
+        digest = hashlib.sha256(content + str(dataset["id"]).encode() + dataset["rules_hash"].encode()
+            + kind.encode() + str(skip_first_row).encode()).hexdigest()
         if st.session_state.get("dataset_import_digest") != digest:
             st.session_state.update(dataset_import_digest=digest, dataset_import_key=uuid4().hex,
                                     dataset_import_valid=False, dataset_import_done=False)
             st.session_state.pop("dataset_preview", None)
         params = {"schema_version": dataset["schema_version"]}
+        if kind == "csv":
+            params["skip_first_row"] = skip_first_row
         headers = {"Idempotency-Key": st.session_state["dataset_import_key"]}
         if st.button("預檢檔案"):
             st.session_state["dataset_import_valid"] = False
