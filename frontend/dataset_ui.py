@@ -199,25 +199,23 @@ def render_import_page(request, show_error):
             result = request("POST", f"/api/v1/datasets/{dataset['id']}/imports", params=params,
                 headers=headers, files={"file": (file.name, content)})
             st.session_state["dataset_import_done"] = True
-            st.success(f"已匯入 {result['row_count']} 筆，批次 #{result['batch_id']}，可至資料分析查看。")
+            st.success(f"已匯入 {result['row_count']} 筆，批次 #{result['batch_id']}，可至管理數據集查看。")
     except httpx.HTTPError as exc:
         st.session_state["dataset_import_valid"] = False
         show_error(exc)
 
 
-def render_analysis_page(request, show_error):
-    st.subheader("選擇數據集")
+def render_manage_records_page(request, show_error):
+    st.subheader("管理數據集")
     try:
-        dataset = choose_dataset(request, "analysis_dataset", show_page=False, require_selection=True)
+        dataset = choose_dataset(request, "manage_records", show_page=False, require_selection=True)
         if dataset is None:
             return
-        st.subheader("資料分析")
-        render_analysis(dataset, request)
         st.subheader("數據檢視")
         st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
-        sort_key = f"analysis_sort_{dataset['id']}"
+        sort_key = f"manage_sort_{dataset['id']}"
         sort = st.session_state.get(sort_key, {"column": None, "direction": "asc"})
-        page_key = f"analysis_page_{dataset['id']}_{sort['column']}_{sort['direction']}"
+        page_key = f"manage_page_{dataset['id']}_{sort['column']}_{sort['direction']}"
         page = int(st.session_state.get(page_key, 1))
         params = {"page": page, "page_size": 10}
         if sort["column"]:
@@ -238,7 +236,7 @@ def render_analysis_page(request, show_error):
                  "data": {"__record_id": row["id"], "__schema_version": row["schema_version"],
                           **display_rows([row["data"]], result["dataset"]["fields"], row["value_types"])[0]}}
                 for row in result["items"]]
-        if st.session_state.pop(f"analysis_deleted_{dataset['id']}", False):
+        if st.session_state.pop(f"manage_deleted_{dataset['id']}", False):
             st.success("資料列已刪除。")
         event = render_table(dataset["id"], columns, rows, sort["column"], sort["direction"])
         st.number_input("頁碼", min_value=1, max_value=total_pages, step=1, key=page_key)
@@ -251,7 +249,7 @@ def render_analysis_page(request, show_error):
         if not isinstance(event, dict) or event.get("dataset_id") != dataset["id"]:
             return
         event_id = event.get("event_id")
-        last_key = f"analysis_event_{dataset['id']}"
+        last_key = f"manage_event_{dataset['id']}"
         if not isinstance(event_id, str) or event_id == st.session_state.get(last_key):
             return
         st.session_state[last_key] = event_id
@@ -264,7 +262,18 @@ def render_analysis_page(request, show_error):
             record_id = event["record_id"]
             if any(row["record_id"] == record_id and row["can_delete"] for row in rows):
                 request("DELETE", f"/api/v1/datasets/{dataset['id']}/records/{record_id}")
-                st.session_state[f"analysis_deleted_{dataset['id']}"] = True
+                st.session_state[f"manage_deleted_{dataset['id']}"] = True
                 st.rerun()
+    except httpx.HTTPError as exc:
+        show_error(exc)
+
+
+def render_analysis_page(request, show_error):
+    st.subheader("選擇數據集")
+    try:
+        dataset = choose_dataset(request, "analysis_dataset", show_page=False, require_selection=True)
+        if dataset is not None:
+            st.subheader("資料分析")
+            render_analysis(dataset, request)
     except httpx.HTTPError as exc:
         show_error(exc)

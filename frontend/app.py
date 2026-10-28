@@ -5,7 +5,8 @@ import httpx
 import streamlit as st
 
 from auth_storage import browser_token
-from dataset_ui import render_dataset_page, render_manual_page, render_import_page, render_analysis_page
+from dataset_ui import (render_dataset_page, render_manage_records_page, render_manual_page,
+                        render_import_page, render_analysis_page)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -101,6 +102,10 @@ def datasets_page():
     render_dataset_page(request, show_error)
 
 
+def manage_page():
+    render_manage_records_page(request, show_error)
+
+
 def create_page():
     render_manual_page(request, show_error)
 
@@ -147,6 +152,7 @@ else:
     if user["role"] == "admin":
         pages.append(st.Page(users_page, title="使用者清單"))
     pages.append(st.Page(datasets_page, title="建立數據集"))
+    pages.append(st.Page(manage_page, title="管理數據集"))
     if user["role"] in {"admin", "user"}:
         pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
     pages.append(st.Page(analysis_page, title="資料分析"))

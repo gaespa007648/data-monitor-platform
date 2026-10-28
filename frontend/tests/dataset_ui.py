@@ -58,7 +58,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     with patch("streamlit.navigation", side_effect=capture):
         full_app.run()
     assert not full_app.exception
-    assert observed == ["服務概況", "建立數據集", "建立資料", "批次匯入", "資料分析"]
+    assert observed == ["服務概況", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析"]
 
     def page(name, editor=None):
         app = AppTest.from_string(definitions + "\n" + name + "()", default_timeout=30)
@@ -135,24 +135,24 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 3
 
     with patch("dataset_ui.render_table", return_value=None):
-        app = page("analysis_page")
-        assert [element.value for element in app.subheader] == ["選擇數據集"]
+        app = page("manage_page")
+        assert [element.value for element in app.subheader] == ["管理數據集"]
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
     assert widget(app, "number_input", "頁碼")
-    assert [element.value for element in app.subheader] == ["選擇數據集", "資料分析", "數據檢視"]
+    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視"]
     assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
         app.run()
     assert not app.exception
-    assert app.session_state[f"analysis_sort_{dataset_id}"] == {
+    assert app.session_state[f"manage_sort_{dataset_id}"] == {
         "column": "sepal_length", "direction": "asc"}
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-desc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
         app.run()
     assert not app.exception
-    assert app.session_state[f"analysis_sort_{dataset_id}"]["direction"] == "desc"
+    assert app.session_state[f"manage_sort_{dataset_id}"]["direction"] == "desc"
     victim = client.get(f"/api/v1/datasets/{dataset_id}/records").json()["items"][0]["id"]
     with patch("dataset_ui.render_table", return_value={
             "event_id": "delete-one", "action": "delete", "dataset_id": dataset_id, "record_id": victim}):
@@ -178,4 +178,11 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert not app.exception
     assert len(table.call_args.args[2]) == 1
 
-print("PASS: dataset create, import, analysis sorting, deletion and ten-row pagination")
+    with patch("dataset_ui.render_table", side_effect=AssertionError("Table must stay on management page")):
+        analysis = page("analysis_page")
+        widget(analysis, "selectbox", "選擇數據集").set_value(dataset_id).run()
+    assert not analysis.exception
+    assert [element.value for element in analysis.subheader] == ["選擇數據集", "資料分析"]
+    assert not any(element.label == "頁碼" for element in analysis.number_input)
+
+print("PASS: dataset management table sorting, deletion and ten-row pagination; analysis has no table")
