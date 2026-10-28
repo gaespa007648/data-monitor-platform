@@ -2,7 +2,7 @@
 
 即時資料分析與監控系統，採 FastAPI 提供 API、MariaDB 持久化資料、Streamlit 提供互動介面。
 
-目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入、篩選與統計圖表，以及每頁 10 筆的前端資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
+目前提供使用者註冊與 JWT 登入、Admin／User／Viewer 權限、自訂 Schema 的數據集、單筆建立與 CSV／JSON 批次匯入、資料篩選與統計圖表、Excel 下載、即時監控與 WebSocket 模擬生成器。Streamlit 另提供資料檢視、Admin 專用的使用者角色管理、系統狀態與操作日誌。既有固定四欄位資料 API 仍保留相容；完整功能與限制請見 [系統架構](docs/architecture.md)。
 
 ## 技術棧
 
@@ -13,7 +13,7 @@
 | 資料存取 | SQLAlchemy 2 Async ORM、asyncmy、連線池 |
 | 遷移 | Alembic，一次性 migrate 服務 |
 | 認證 | JWT HS256（60 分鐘）、Argon2 密碼雜湊、admin/user/viewer 角色 |
-| 前端 | Streamlit 多頁面、Session State、HTTPX |
+| 前端 | Streamlit 多頁面、Session State、HTTPX、WebSocket 用戶端 |
 | 容器 | 多階段 Dockerfile、Docker Compose、named volume |
 
 應用資料讀寫均使用 ORM，沒有原生 SQL 查詢。Alembic 的 schema operations 負責產生 DDL。版本與部署限制請見 [系統架構](docs/architecture.md)。
@@ -23,15 +23,18 @@
 ```text
 compose.yaml                 # 唯一一份容器編排設定
 .env.example                 # 本機設定範本，不含正式憑證
-data/                        # 首次啟動時使用的 Iris 與 Vega Stocks 範例 CSV
+data/                        # migrate 初始化時使用的 Iris 與 Vega Stocks 範例 CSV
 backend/
   Dockerfile                 # 共用於 api 與 migrate 的多階段映像
   app/                       # 設定、ORM、JWT、API、初始化流程
   migrations/                # Alembic schema 版本
 frontend/
   Dockerfile                 # Streamlit 多階段映像
-  app.py                     # 註冊登入、概況與數據集頁面
+  app.py                     # 註冊登入、產品簡介與頁面導覽
   dataset_ui.py              # 數據集建立、輸入、匯入與檢視
+  analysis_ui.py             # 資料篩選、統計與 Excel 下載
+  monitor_ui.py              # 即時監控與模擬生成器
+  system_admin_ui.py         # 使用者、系統狀態與操作日誌
 docs/                        # 對外架構、操作與文件管理說明
 ```
 
@@ -118,12 +121,19 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 | POST `/api/v1/auth/tokens` | JSON 帳密登入，取得 JWT |
 | GET `/api/v1/users/me` | 查看目前登入者 |
 | GET `/api/v1/users` | 管理員取得使用者清單，viewer 回傳 403 |
+| PATCH `/api/v1/users/{id}/role` | Admin 修改使用者角色 |
+| GET `/api/v1/system/database` | Admin 查看 MariaDB 連線、快取及資料表大小等指標 |
+| GET `/api/v1/system/audit-logs` | Admin 分頁查詢操作稽核紀錄 |
 | GET／POST `/api/v1/datasets` | 數據集清單與建立 |
 | GET `/api/v1/datasets/{id}` | 數據集及目前 Schema |
 | POST `/api/v1/datasets/{id}/fields` | 只新增欄位，保留既有欄位 |
 | GET／POST `/api/v1/datasets/{id}/records` | API 每頁最多 20 筆的排序檢視（Streamlit 固定 10 筆）／單筆建立 |
 | DELETE `/api/v1/datasets/{id}/records/{record_id}` | 建立者或 Admin 刪除數據集資料列 |
 | POST `/api/v1/datasets/{id}/imports` | CSV／JSON 預檢與冪等批次匯入；CSV 可設定是否跳過首列欄名 |
+| GET／POST `/api/v1/monitors` | 查詢及建立即時監控設定 |
+| POST `/api/v1/monitors/{id}/start`、`/stop` | 啟用或停止監控 |
+| GET `/api/v1/monitors/{id}/snapshot`、`/alerts` | 讀取圖表資料與異常告警 |
+| WebSocket `/api/v1/generator/ws` | 驗證後每秒模擬寫入一筆資料並推送結果 |
 | GET／POST `/api/v1/categories` | 查詢分類；僅 Admin 可建立分類 |
 | GET／POST `/api/v1/records` | 資料分頁查詢／建立 |
 | GET／PATCH／DELETE `/api/v1/records/{id}` | 讀取／更新／刪除記錄；寫入須符合角色與擁有者權限 |
@@ -138,8 +148,8 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 
 | 帳號 | 預設密碼 | 權限 |
 | --- | --- | --- |
-| admin | `AdminDemo123!` | 管理全部資料、建立分類及查看使用者清單 |
-| viewer | `ViewerDemo123!` | 查看自身資訊、概況與共享資料；不可寫入 |
+| admin | `AdminDemo123!` | 管理全部資料、使用者角色與系統管理資訊；可建立分類 |
+| viewer | `ViewerDemo123!` | 查看自身資訊、產品簡介與共享資料；不可寫入 |
 
 也可在 Streamlit「註冊」頁建立自己的 User 帳號，無固定測試密碼。User 可讀取共享數據集，建立自己的數據集及資料；Admin 可管理全部數據集。既有固定欄位 API 的修改／刪除權限仍依建立者判斷。操作方式與格式請見 [使用者與資料管理](docs/user-and-data-management.md)。
 
@@ -165,7 +175,7 @@ docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate 
 
 ## 延伸文件
 
-- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：數據集 Schema、手動輸入、CSV 首列選項、預檢、匯入與分頁操作。
+- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：系統管理、數據集、CSV／JSON 匯入、資料分析與即時監控操作。
 - [系統架構與架構圖](docs/architecture.md)：容器職責、通訊、認證與資料儲存。
 - [使用者與資料管理](docs/user-and-data-management.md)：角色、資料操作與 CSV／JSON 匯入格式。
 - [JWT 認證機制](docs/jwt-authentication.md)：權杖格式、有效期與驗證流程。

@@ -1,6 +1,6 @@
 # 系統架構
 
-本文件描述目前程式與 `compose.yaml` 的實際架構。系統透過 Streamlit 提供互動介面，以 FastAPI 處理認證與資料查詢，MariaDB 保存應用資料。
+本文件描述目前程式與 `compose.yaml` 的實際架構。系統透過 Streamlit 提供互動介面，以 FastAPI 處理認證、資料操作、分析查詢及即時監控，MariaDB 保存應用資料。
 
 ## 容器與網路
 
@@ -19,7 +19,7 @@ flowchart LR
 | db | MariaDB 11.7.2、InnoDB、utf8mb4 資料儲存 | 常駐，健康檢查確認連線與 InnoDB 初始化 |
 | migrate | Alembic schema 升版、選用的測試帳號建立與密碼同步、缺少的範例數據集匯入 | 一次性，成功後結束碼為 0 |
 | api | FastAPI、Pydantic、JWT、角色授權、Async ORM | 常駐，提供 REST、WebSocket 與 Swagger |
-| frontend | Streamlit 多頁面、登入／登出、數據集、資料分析及即時監控 | 常駐，透過 HTTPX 與 WebSocket 連接 API |
+| frontend | Streamlit 多頁面、產品簡介、登入／登出、數據集、資料分析、系統管理及即時監控 | 常駐，透過 HTTPX 與 WebSocket 連接 API |
 
 所有服務由單一 `compose.yaml` 管理，不分環境檔。`app_net` 連接 frontend 與 api；`data_net` 為 internal 網路，連接 db、migrate 與 api。前端不直接連資料庫。
 
@@ -84,7 +84,7 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 
 ## 功能與部署限制
 
-Streamlit 目前提供概況、Admin 專用的系統管理使用者列表與角色編輯、數據集建立與 Schema 管理、依欄位型別篩選的統計圖表與 Excel 下載、即時監控與 WebSocket 模擬生成器，以及「管理數據集」頁的每頁最多 10 筆資料檢視、欄位排序、權限受控的單列刪除、按 Schema 手動新增資料與 CSV／JSON 預檢匯入。系統管理入口對所有登入者可見，但非 Admin 不會取得使用者列表。監控圖表與異常資料以每秒 REST 查詢更新；模擬生成器使用 WebSocket 接收寫入結果。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單；資料依共享空間規則讀取。尚未提供外部即時資料接收與獨立批次 worker。
+Streamlit 目前提供產品簡介、Admin 專用的使用者列表與角色編輯、FastAPI／MariaDB 健康檢查、MariaDB 狀態指標與操作日誌、數據集建立與 Schema 擴充、依欄位型別篩選的統計圖表與 Excel 下載、即時監控與 WebSocket 模擬生成器。「管理數據集」頁提供每頁最多 10 筆的資料檢視、欄位排序、權限受控的單列刪除，以及按 Schema 手動新增資料與 CSV／JSON 匯入；JSON 上傳後自動預檢，CSV 由使用者按鈕預檢。系統管理入口對所有登入者可見，但非 Admin 只會看到無權限訊息，後端管理 API 也會檢查角色。資料庫指標來自 MariaDB 狀態變數與資料表大小，不代表主機即時 CPU 使用率、程序記憶體或磁碟剩餘空間。監控圖表與異常資料以每秒 REST 查詢更新；模擬生成器使用 WebSocket 接收寫入結果。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單；資料依共享空間規則讀取。尚未提供外部即時資料接收與獨立批次 worker。
 
 目前沒有 refresh token 或後端登出撤銷，密碼變更前已發出的 JWT 仍可使用至原到期時間。登入／註冊限流使用單程序 IP 記憶體視窗，重啟會清除，Streamlit 代理下多名使用者共用同一來源額度。DB runtime 與 migration 尚共用帳號，對外部署前需拆分權限、使用非範本憑證、加入 TLS，並確認指定的 MariaDB 11.7 rolling release 維護策略。
 

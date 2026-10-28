@@ -19,7 +19,7 @@ Admin 可在列表下方查看 FastAPI／MariaDB 健康狀態、MariaDB 狀態�
 
 ## 數據集 Schema 與記錄
 
-Compose 首次啟動會從專案 `data/` 建立缺少的公開範例：`example-iris` 保留 `Id`、四個花萼／花瓣數值欄位與 `Species`，其中 `Id` 為 unique 整數；`example-vega-stocks` 含 `symbol`、`date`、`price`，股票 CSV 的原始日期會轉成 UTC datetime。兩者由停用登入的內部帳號持有，所有登入者可檢視，Admin 可管理。初始化只依完整名稱判斷是否建立；若已有同名數據集，即使其資料後來更動或刪除，也不會在重啟時重新匯入。
+每次執行 migrate 初始化流程時，會從專案 `data/` 建立缺少的公開範例：`example-iris` 保留 `Id`、四個花萼／花瓣數值欄位與 `Species`，其中 `Id` 為 unique 整數；`example-vega-stocks` 含 `symbol`、`date`、`price`，股票 CSV 的原始日期會轉成 UTC datetime。兩者由停用登入的內部帳號持有，所有登入者可檢視，Admin 可管理。初始化只依完整名稱判斷是否建立；若已有同名數據集，即使其資料後來更動或刪除，也不會在重啟時重新匯入。
 
 數據集在建立時包含 1–100 個自訂欄位。每欄可選填備註（最多 500 字元）及 data_type：string、integer、decimal、datetime、boolean；另可設定 required、nullable、unique（預設 false）。備註是欄位說明，不是資料記錄的值，也不參與資料型別驗證。欄名區分大小寫，不可重複；不可使用保留前綴 `__`。建立後，原欄位的名稱、備註、型別與規則不能變更或刪除，只能新增欄位；每次新增產生新的 Schema 版本。舊數據集欄位的 unique 預設 false；舊記錄保留當時的 Schema 版本，新欄位不回填。
 
