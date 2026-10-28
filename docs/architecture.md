@@ -46,6 +46,28 @@ Compose 使用 `depends_on` 的健康與成功完成條件控制啟動相依。m
 
 MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-monitor-platform_mariadb_data`。一般 `down` 與容器重建會保留資料，`down -v` 會刪除資料。Volume 不是備份；正式部署仍需另建備份及還原程序。
 
+## 即時監控資料流
+
+```mermaid
+sequenceDiagram
+    participant UI as Streamlit
+    participant API as FastAPI
+    participant DB as MariaDB
+    UI->>API: WebSocket 連線，送出 JWT 與數據集 ID
+    loop 每秒一次，直到停止或斷線
+        API->>API: 依數據集 Schema 產生並驗證模擬資料
+        API->>DB: 寫入資料並檢查啟用中的異常規則
+        API-->>UI: WebSocket 回傳寫入結果
+    end
+    loop 監控啟用時每秒更新
+        UI->>API: REST 查詢監控快照
+        API->>DB: 查詢新增筆數與異常紀錄
+        API-->>UI: 回傳圖表點與異常資料
+    end
+```
+
+模擬資料由 FastAPI 產生，Streamlit 透過 WebSocket 控制開始與停止並接收結果。監控設定和異常紀錄保存在 MariaDB；圖表與告警透過 REST 每秒查詢更新。目前由前後端直接連線處理這段流程。
+
 ## 認證與權限
 
 Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資料庫密碼雜湊後發出有效期 60 分鐘的 HS256 JWT。後續請求使用 Bearer token，後端驗證簽章、期限、issuer、audience，並重新確認帳號存在且啟用。
@@ -62,7 +84,7 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 
 ## 功能與部署限制
 
-Streamlit 目前提供概況、Admin 使用者清單、數據集建立與 Schema 管理、按 Schema 手動建立資料、CSV／JSON 預檢匯入、依欄位型別篩選的統計圖表與 Excel 下載、即時監控與 WebSocket 模擬生成器，以及獨立「管理數據集」頁的每頁最多 10 筆資料檢視、欄位排序與權限受控的單列刪除。監控圖表與異常資料以每秒 REST 查詢更新；模擬生成器使用 WebSocket 接收寫入結果。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供外部即時資料接收、Redis 與獨立批次 worker。
+Streamlit 目前提供概況、Admin 使用者清單、數據集建立與 Schema 管理、按 Schema 手動建立資料、CSV／JSON 預檢匯入、依欄位型別篩選的統計圖表與 Excel 下載、即時監控與 WebSocket 模擬生成器，以及獨立「管理數據集」頁的每頁最多 10 筆資料檢視、欄位排序與權限受控的單列刪除。監控圖表與異常資料以每秒 REST 查詢更新；模擬生成器使用 WebSocket 接收寫入結果。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供外部即時資料接收與獨立批次 worker。
 
 目前沒有 refresh token 或後端登出撤銷，密碼變更前已發出的 JWT 仍可使用至原到期時間。登入／註冊限流使用單程序 IP 記憶體視窗，重啟會清除，Streamlit 代理下多名使用者共用同一來源額度。DB runtime 與 migration 尚共用帳號，對外部署前需拆分權限、使用非範本憑證、加入 TLS，並確認指定的 MariaDB 11.7 rolling release 維護策略。
 
