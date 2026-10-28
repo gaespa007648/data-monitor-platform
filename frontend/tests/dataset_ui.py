@@ -224,15 +224,24 @@ with httpx.Client(base_url=base, timeout=30) as client:
     with patch("streamlit.file_uploader", return_value=upload):
         app.run()
         assert not any(item.label == "排除第一列欄名" for item in app.checkbox)
-        widget(app, "button", "預檢檔案").click().run()
         assert not app.exception and app.session_state["dataset_import_valid"]
         assert app.session_state["dataset_preview"]["row_count"] == 2
+        assert widget(app, "button", "重新預檢檔案")
+        assert any("JSON 頂層須為" in item.value for item in app.info)
         assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == before
         widget(app, "button", "確認匯入").click().run()
         assert not app.exception and app.session_state["dataset_import_done"]
     records = client.get(f"/api/v1/datasets/{dataset_id}/records", params={"page_size": 20}).json()
     assert records["total"] == before + 2
     assert any(row["data"].get("notes") == "json-one" for row in records["items"])
+
+    invalid_upload = SimpleNamespace(name="invalid.json", getvalue=lambda: b'{"sepal_length": 5.1}')
+    with patch("streamlit.file_uploader", return_value=invalid_upload):
+        app.run()
+        assert not app.exception and not app.session_state["dataset_import_valid"]
+        assert widget(app, "button", "確認匯入").disabled
+        assert any("JSON 預檢失敗" in item.value for item in app.error)
+    assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == before + 2
 
     for key, bad_json in [
         ("object", b'{"sepal_length": 5.1}'),
