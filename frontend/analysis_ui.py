@@ -8,6 +8,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from display_format import CHART_NUMBER_FORMAT, chart_number, display_bounds, display_number
+
 
 SUPPORTED = {"datetime", "integer", "decimal", "boolean", "string"}
 NUMERIC = {"integer", "decimal"}
@@ -68,10 +70,12 @@ def boxplot_summary(rows, field):
 
 
 def render_boxplot(summary, field):
-    data = pd.DataFrame([{"欄位": field, **{name: float(value) for name, value in summary.items()}}])
-    base = alt.Chart(data).encode(y=alt.Y("欄位:N", axis=None, title=None))
+    data = pd.DataFrame([{"欄位": field, **{name: chart_number(value) for name, value in summary.items()}}])
+    tooltips = [alt.Tooltip(f"{name}:Q", format=CHART_NUMBER_FORMAT) for name in summary]
+    base = alt.Chart(data).encode(y=alt.Y("欄位:N", axis=None, title=None), tooltip=tooltips)
     whisker = base.mark_rule(color="#64748b", strokeWidth=2).encode(
-        x=alt.X("最小值:Q", scale=alt.Scale(zero=False), title=field), x2="最大值:Q")
+        x=alt.X("最小值:Q", scale=alt.Scale(zero=False), axis=alt.Axis(format=CHART_NUMBER_FORMAT), title=field),
+        x2="最大值:Q")
     box = base.mark_bar(color="#4c78a8", size=38).encode(
         x="第一四分位數:Q", x2="第三四分位數:Q")
     middle = base.mark_tick(color="white", thickness=3, size=38).encode(x="中位數:Q")
@@ -86,13 +90,19 @@ def histogram(rows, field, bins=10):
         return []
     low, high = min(values), max(values)
     if low == high:
-        return [{"區間": str(low), "筆數": len(values)}]
+        return [{"區間": display_number(low), "筆數": len(values)}]
     width = (high - low) / bins
     counts = [0] * bins
     for value in values:
         counts[min(bins - 1, int((value - low) / width))] += 1
-    return [{"區間": f"{low + width * i:.4f}–{low + width * (i + 1):.4f}",
-             "筆數": count} for i, count in enumerate(counts)]
+    buckets = []
+    for i, count in enumerate(counts):
+        label = f"{display_number(low + width * i)}–{display_number(low + width * (i + 1))}"
+        if buckets and buckets[-1]["區間"] == label:
+            buckets[-1]["筆數"] += count
+        else:
+            buckets.append({"區間": label, "筆數": count})
+    return buckets
 
 
 def category_stats(rows, category, target):
@@ -101,8 +111,8 @@ def category_stats(rows, category, target):
         if row.get(target) is not None:
             groups[_category_label(row.get(category))].append(Decimal(str(row[target])))
     total = sum(map(len, groups.values()))
-    return [{"類別": name, "數量": len(values), "比例 (%)": len(values) * 100 / total,
-             "平均值": float(sum(values) / len(values)), "總和": float(sum(values))}
+    return [{"類別": name, "數量": len(values), "比例 (%)": Decimal(len(values) * 100) / total,
+             "平均值": sum(values) / len(values), "總和": sum(values)}
             for name, values in sorted(groups.items())]
 
 
@@ -111,7 +121,7 @@ def trend_points(rows, time_field, target):
     for row in rows:
         if row.get(time_field) is not None and row.get(target) is not None:
             groups[timestamp(row[time_field])].append(Decimal(str(row[target])))
-    return [{"時間": when, "數值": float(sum(values) / len(values))}
+    return [{"時間": when, "數值": sum(values) / len(values)}
             for when, values in sorted(groups.items())]
 
 
@@ -153,11 +163,12 @@ def render_filters(dataset, rows):
             conditions[name] = (kind, (start_value, end_value))
         elif kind in NUMERIC:
             minimum, maximum = min(map(lambda v: Decimal(str(v)), values)), max(map(lambda v: Decimal(str(v)), values))
+            default_min, default_max = display_bounds(minimum, maximum)
             left, right = st.columns(2)
             with left:
-                lower = st.text_input(f"{name} 最小值", value=str(minimum), key=prefix+"min")
+                lower = st.text_input(f"{name} 最小值", value=default_min, key=prefix+"min")
             with right:
-                upper = st.text_input(f"{name} 最大值", value=str(maximum), key=prefix+"max")
+                upper = st.text_input(f"{name} 最大值", value=default_max, key=prefix+"max")
             try:
                 lower, upper = Decimal(lower), Decimal(upper)
                 if not lower.is_finite() or not upper.is_finite() or lower > upper:
@@ -194,11 +205,14 @@ def render_statistics(dataset, rows):
             st.info("篩選後沒有可分析的數值。")
             return
         st.markdown("**數值分布（Histogram）**")
-        st.bar_chart(pd.DataFrame(histogram(rows, selected)).set_index("區間"))
+        bins = pd.DataFrame(histogram(rows, selected))
+        st.altair_chart(alt.Chart(bins).mark_bar().encode(
+            x=alt.X("區間:N", sort=None, title=selected), y=alt.Y("筆數:Q", title="筆數"),
+            tooltip=["區間:N", "筆數:Q"]), use_container_width=True)
         st.markdown("**箱型圖（最小值、最大值、平均值與中位數）**")
         render_boxplot(summary, selected)
         for column, name in zip(st.columns(4), ("最小值", "最大值", "平均值", "中位數")):
-            column.metric(name, str(summary[name]))
+            column.metric(name, display_number(summary[name]))
     elif kind in CATEGORICAL:
         target = st.selectbox("群組計算目標欄位", numeric_fields, index=None,
                               placeholder="選擇數值欄位", key=f"analysis_group_target_{dataset['id']}")
@@ -210,8 +224,16 @@ def render_statistics(dataset, rows):
             return
         measure = st.selectbox("聚合方式", ["數量", "比例 (%)", "平均值", "總和"],
                                key=f"analysis_group_measure_{dataset['id']}")
-        st.bar_chart(pd.DataFrame(aggregate).set_index("類別")[[measure]])
-        st.dataframe(aggregate, hide_index=True, use_container_width=True)
+        chart_data = pd.DataFrame([{"類別": row["類別"], measure: chart_number(row[measure])}
+                                   for row in aggregate])
+        st.altair_chart(alt.Chart(chart_data).mark_bar().encode(
+            x=alt.X("類別:N", sort=None),
+            y=alt.Y(f"{measure}:Q", axis=alt.Axis(format=CHART_NUMBER_FORMAT)),
+            tooltip=["類別:N", alt.Tooltip(f"{measure}:Q", format=CHART_NUMBER_FORMAT)]),
+            use_container_width=True)
+        st.dataframe([{name: display_number(value) if isinstance(value, Decimal) else value
+                       for name, value in row.items()} for row in aggregate],
+                     hide_index=True, use_container_width=True)
     else:
         target = st.selectbox("趨勢目標欄位", numeric_fields, index=None,
                               placeholder="選擇數值欄位", key=f"analysis_trend_target_{dataset['id']}")
@@ -221,7 +243,12 @@ def render_statistics(dataset, rows):
         if not points:
             st.info("篩選後沒有可繪製的時間資料。")
             return
-        st.line_chart(pd.DataFrame(points).set_index("時間"))
+        chart_data = pd.DataFrame([{"時間": row["時間"], "數值": chart_number(row["數值"])}
+                                   for row in points])
+        st.altair_chart(alt.Chart(chart_data).mark_line(point=True).encode(
+            x=alt.X("時間:T"), y=alt.Y("數值:Q", axis=alt.Axis(format=CHART_NUMBER_FORMAT)),
+            tooltip=[alt.Tooltip("時間:T"), alt.Tooltip("數值:Q", format=CHART_NUMBER_FORMAT)]),
+            use_container_width=True)
 
 
 def render_analysis(dataset, request):

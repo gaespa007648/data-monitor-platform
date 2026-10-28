@@ -12,6 +12,7 @@ import streamlit as st
 
 from analysis_table import render_table
 from analysis_ui import render_analysis
+from display_format import display_rows
 
 
 def preview_rows(content, kind, skip_first_row, fields):
@@ -174,7 +175,7 @@ def render_import_page(request, show_error):
         if sample is None:
             st.info("檔案無法預覽；請按「預檢檔案」查看格式錯誤。")
         else:
-            st.dataframe(sample, use_container_width=True, hide_index=True)
+            st.dataframe(display_rows(sample, dataset["fields"]), use_container_width=True, hide_index=True)
         digest = hashlib.sha256(content + str(dataset["id"]).encode() + dataset["rules_hash"].encode()
             + kind.encode() + str(skip_first_row).encode()).hexdigest()
         if st.session_state.get("dataset_import_digest") != digest:
@@ -193,7 +194,7 @@ def render_import_page(request, show_error):
         if st.session_state.get("dataset_import_valid"):
             result = st.session_state["dataset_preview"]
             st.success(f"預檢成功，共 {result['row_count']} 筆。")
-            st.dataframe(result["normalized_sample"], use_container_width=True)
+            st.dataframe(display_rows(result["normalized_sample"], dataset["fields"]), use_container_width=True)
         if st.button("確認匯入", disabled=not st.session_state.get("dataset_import_valid", False) or st.session_state.get("dataset_import_done", False)):
             result = request("POST", f"/api/v1/datasets/{dataset['id']}/imports", params=params,
                 headers=headers, files={"file": (file.name, content)})
@@ -235,7 +236,7 @@ def render_analysis_page(request, show_error):
                      st.session_state["user"]["role"] == "admin"
                      or row["owner_id"] == st.session_state["user"]["id"]),
                  "data": {"__record_id": row["id"], "__schema_version": row["schema_version"],
-                          **{name: row["data"].get(name) for name in columns[2:]}}}
+                          **display_rows([row["data"]], result["dataset"]["fields"], row["value_types"])[0]}}
                 for row in result["items"]]
         if st.session_state.pop(f"analysis_deleted_{dataset['id']}", False):
             st.success("資料列已刪除。")

@@ -163,7 +163,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     for index in range(9):
         response = client.post(f"/api/v1/datasets/{dataset_id}/records", json={
             "schema_version": 2,
-            "data": {"sepal_length": "5.1", "sepal_width": "3.5",
+            "data": {"sepal_length": "5.843333333" if index == 0 else "5.1", "sepal_width": "3.5",
                      "petal_length": "1.4", "petal_width": "0.2", "species": "setosa",
                      "notes": f"pagination-{index}"}})
         response.raise_for_status()
@@ -171,6 +171,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
         app.run()
     assert not app.exception
     assert len(table.call_args.args[2]) == 10
+    assert any(row["data"]["sepal_length"] == "5.843" for row in table.call_args.args[2])
     assert widget(app, "number_input", "頁碼").max == 2
     with patch("dataset_ui.render_table", return_value=None) as table:
         widget(app, "number_input", "頁碼").set_value(2).run()
