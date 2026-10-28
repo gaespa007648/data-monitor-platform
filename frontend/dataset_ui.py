@@ -131,13 +131,8 @@ def render_dataset_page(request, show_error, navigate_to_manage=None):
         show_error(exc)
 
 
-def render_manual_page(request, show_error):
-    st.subheader("建立資料")
+def render_manual_entry(dataset, request, show_error):
     try:
-        dataset = choose_dataset(request, "manual_dataset", writable=True, show_page=False)
-        if dataset is None:
-            return
-        show_schema(dataset)
         data = {}
         prefix = f"manual_{dataset['id']}_{dataset['schema_version']}_"
         for field in dataset["fields"]:
@@ -156,21 +151,18 @@ def render_manual_page(request, show_error):
         if st.button("建立"):
             result = request("POST", f"/api/v1/datasets/{dataset['id']}/records",
                 json={"schema_version": dataset["schema_version"], "data": data})
-            st.success(f"資料已建立，記錄 #{result['id']}。")
+            st.session_state[f"manage_created_{dataset['id']}"] = result["id"]
+            st.rerun()
     except httpx.HTTPError as exc:
         show_error(exc)
 
 
-def render_import_page(request, show_error):
-    st.subheader("批次匯入")
-    st.caption("先選數據集，CSV／JSON 需符合該數據集的目前 Schema。每檔最多 2 MiB／1000 筆。")
+def render_batch_import(dataset, request, show_error):
+    st.caption("CSV／JSON 需符合目前數據集的 Schema。每檔最多 2 MiB／1000 筆。")
     try:
-        dataset = choose_dataset(request, "import_dataset", writable=True, show_page=False)
-        if dataset is None:
-            return
-        show_schema(dataset)
-        kind = st.selectbox("檔案格式", ["csv", "json"])
-        file = st.file_uploader("選擇檔案", type=[kind])
+        kind = st.selectbox("檔案格式", ["csv", "json"], key=f"dataset_import_kind_{dataset['id']}")
+        file = st.file_uploader("選擇檔案", type=[kind],
+                                key=f"dataset_import_file_{dataset['id']}_{dataset['schema_version']}_{kind}")
         skip_first_row = st.checkbox("排除第一列欄名", value=True,
             help="勾選時第一列作為欄名，不匯入資料；取消勾選時依數據集欄位順序匯入每一列。") if kind == "csv" else False
         if file is None:
@@ -209,7 +201,8 @@ def render_import_page(request, show_error):
             result = request("POST", f"/api/v1/datasets/{dataset['id']}/imports", params=params,
                 headers=headers, files={"file": (file.name, content)})
             st.session_state["dataset_import_done"] = True
-            st.success(f"已匯入 {result['row_count']} 筆，批次 #{result['batch_id']}，可至管理數據集查看。")
+            st.session_state[f"manage_imported_{dataset['id']}"] = result
+            st.rerun()
     except httpx.HTTPError as exc:
         st.session_state["dataset_import_valid"] = False
         show_error(exc)
@@ -221,6 +214,12 @@ def render_manage_records_page(request, show_error):
         dataset = choose_dataset(request, "manage_records", show_page=False, require_selection=True)
         if dataset is None:
             return
+        created_id = st.session_state.pop(f"manage_created_{dataset['id']}", None)
+        if created_id is not None:
+            st.success(f"資料已建立，記錄 #{created_id}。")
+        imported = st.session_state.pop(f"manage_imported_{dataset['id']}", None)
+        if imported is not None:
+            st.success(f"已匯入 {imported['row_count']} 筆，批次 #{imported['batch_id']}。")
         st.subheader("數據檢視")
         st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
         sort_key = f"manage_sort_{dataset['id']}"
@@ -251,6 +250,17 @@ def render_manage_records_page(request, show_error):
         event = render_table(dataset["id"], columns, rows, sort["column"], sort["direction"])
         st.number_input("頁碼", min_value=1, max_value=total_pages, step=1, key=page_key)
         st.caption(f"共 {result['total']} 筆，第 {page} 頁／共 {total_pages} 頁；每頁最多 10 筆。新增欄位未回填舊資料，空白可能代表缺值或 null。")
+        st.subheader("匯入資料")
+        if not dataset["can_write"]:
+            st.info("僅數據集建立者或 Admin 可匯入資料，目前僅供檢視。")
+        else:
+            method = st.radio("匯入方式", ["手動新增", "批次匯入"],
+                              key=f"manage_import_mode_{dataset['id']}")
+            show_schema(dataset)
+            if method == "手動新增":
+                render_manual_entry(dataset, request, show_error)
+            else:
+                render_batch_import(dataset, request, show_error)
         if isinstance(event, str):
             try:
                 event = json.loads(event)

@@ -5,8 +5,7 @@ import httpx
 import streamlit as st
 
 from auth_storage import browser_token
-from dataset_ui import (render_dataset_page, render_manage_records_page, render_manual_page,
-                        render_import_page, render_analysis_page)
+from dataset_ui import render_dataset_page, render_manage_records_page, render_analysis_page
 from monitor_ui import render_monitor_page, stop_generator
 from system_admin_ui import render_system_admin_page
 
@@ -108,14 +107,6 @@ def go_manage_dataset(dataset_id):
     st.switch_page(MANAGE_DATASET_PAGE)
 
 
-def create_page():
-    render_manual_page(request, show_error)
-
-
-def import_page():
-    render_import_page(request, show_error)
-
-
 def analysis_page():
     render_analysis_page(request, show_error)
 
@@ -162,8 +153,6 @@ else:
     pages.append(st.Page(users_page, title="系統管理"))
     pages.append(st.Page(datasets_page, title="建立數據集"))
     pages.append(MANAGE_DATASET_PAGE)
-    if user["role"] in {"admin", "user"}:
-        pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
     pages.append(st.Page(analysis_page, title="資料分析"))
     pages.append(st.Page(monitor_page, title="即時監控"))
     st.navigation(pages).run()

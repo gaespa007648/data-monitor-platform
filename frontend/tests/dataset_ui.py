@@ -72,7 +72,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     with patch("streamlit.navigation", side_effect=capture):
         full_app.run()
     assert not full_app.exception
-    assert observed == ["服務概況", "系統管理", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析", "即時監控"]
+    assert observed == ["服務概況", "系統管理", "建立數據集", "管理數據集", "資料分析", "即時監控"]
 
     def page(name, editor=None):
         app = AppTest.from_string(definitions + "\n" + name + "()", default_timeout=30)
@@ -115,9 +115,11 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert current["fields"][5]["remark"] == "觀察註記"
     assert current["fields"][5]["unique"] is True
 
-    app = page("create_page")
+    app = page("manage_page")
     assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
     widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
+    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視", "匯入資料"]
+    assert widget(app, "radio", "匯入方式").value == "手動新增"
     for name, value in [("sepal_length", "5.1"), ("sepal_width", "3.5"),
                         ("petal_length", "1.4"), ("petal_width", "0.2"),
                         ("species", "setosa")]:
@@ -126,10 +128,9 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert not app.exception and app.success
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 1
 
-    app = page("import_page")
+    widget(app, "radio", "匯入方式").set_value("批次匯入").run()
     assert not any(item.label == "數據集清單頁碼" for item in app.number_input)
     assert not any(item.label == "產生範本資料" for item in app.button)
-    widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     content = (b"sepal_length,sepal_width,petal_length,petal_width,species,notes\n"
                b"5.1,3.5,1.4,0.2,setosa,observed\n")
     upload = SimpleNamespace(name="iris.csv", getvalue=lambda: content)
@@ -160,7 +161,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
     assert widget(app, "number_input", "頁碼")
-    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視"]
+    assert [element.value for element in app.subheader] == ["管理數據集", "數據檢視", "匯入資料"]
     assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
