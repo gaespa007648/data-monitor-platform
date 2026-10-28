@@ -1,12 +1,10 @@
 import json
 import os
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import httpx
 import streamlit as st
 
-from import_ui import render_import_page, render_schema_page
+from dataset_ui import render_dataset_page, render_manual_page, render_import_page, render_analysis_page
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -97,112 +95,20 @@ def users_page():
         show_error(exc)
 
 
-def category_map():
-    return {row["id"]: row["name"] for row in request("GET", "/api/v1/categories")}
-
-
-def timestamp_default():
-    return datetime.now(ZoneInfo("Asia/Taipei")).replace(microsecond=0).isoformat()
-
-
-def record_form(prefix, categories, row=None):
-    with st.form(prefix):
-        title = st.text_input("標題", value=row["title"] if row else "", max_chars=200)
-        value = st.text_input("數值（最多 6 位小數）", value=str(row["value"]) if row else "0")
-        options = list(categories)
-        index = options.index(row["category_id"]) if row and row["category_id"] in options else 0
-        category_id = st.selectbox("分類", options, index=index, format_func=lambda key: categories[key])
-        timestamp = st.text_input("時間（ISO 8601，需含時區）", value=row["timestamp"] if row else timestamp_default())
-        submit = st.form_submit_button("儲存變更" if row else "建立資料")
-    if submit:
-        payload = {"title": title, "value": value, "category_id": category_id, "timestamp": timestamp}
-        try:
-            if row:
-                payload["version"] = row["version"]
-                request("PATCH", f"/api/v1/records/{row['id']}", json=payload)
-            else:
-                request("POST", "/api/v1/records", json=payload)
-            st.session_state["notice"] = "資料已儲存"
-            st.rerun()
-        except httpx.HTTPError as exc:
-            show_error(exc)
-
-
-def records_page():
-    st.subheader("資料列表")
-    if "notice" in st.session_state:
-        st.success(st.session_state.pop("notice"))
-    try:
-        categories = category_map()
-        with st.expander("篩選與排序", expanded=True):
-            category = st.selectbox("分類篩選", [None, *categories], format_func=lambda key: "全部" if key is None else categories[key])
-            owner = st.number_input("建立者 ID（0 表示全部）", min_value=0, step=1)
-            source = st.selectbox("來源", ["全部", "manual", "import"])
-            start = st.text_input("起始時間（含，ISO 8601 含時區）")
-            end = st.text_input("結束時間（不含，ISO 8601 含時區）")
-            sort_by = st.selectbox("排序欄位", ["timestamp", "value", "title", "id", "created_at"])
-            order = st.selectbox("排序方向", ["desc", "asc"])
-            page = st.number_input("資料頁碼", min_value=1, step=1)
-            page_size = st.selectbox("每頁筆數", [20, 50, 100])
-        params = {"page": page, "page_size": page_size, "sort_by": sort_by, "order": order}
-        for key, item in {"category_id": category, "owner_id": owner or None,
-                          "source": None if source == "全部" else source, "start": start, "end": end}.items():
-            if item is not None and item != "":
-                params[key] = item
-        result = request("GET", "/api/v1/records", params=params)
-        st.caption(f"共 {result['total']} 筆；時間顯示為 UTC。")
-        st.dataframe(result["items"], use_container_width=True)
-        user = st.session_state["user"]
-        editable = {row["id"]: row for row in result["items"]
-                    if user["role"] == "admin" or (user["role"] == "user" and row["owner_id"] == user["id"])}
-        if editable:
-            selected = st.selectbox("選擇本頁可管理資料", list(editable))
-            row = editable[selected]
-            st.caption(f"記錄 ID {selected}，版本 {row['version']}")
-            record_form(f"edit_{selected}_{row['version']}", categories, row)
-            confirmed = st.checkbox("確認永久刪除此資料", key=f"confirm_{selected}_{row['version']}")
-            if st.button("刪除資料", disabled=not confirmed):
-                request("DELETE", f"/api/v1/records/{selected}", params={"version": row["version"]})
-                st.session_state["notice"] = "資料已刪除"
-                st.rerun()
-    except httpx.HTTPError as exc:
-        show_error(exc)
+def datasets_page():
+    render_dataset_page(request, show_error)
 
 
 def create_page():
-    st.subheader("建立資料")
-    if "notice" in st.session_state:
-        st.success(st.session_state.pop("notice"))
-    try:
-        categories = category_map()
-        if not categories:
-            st.info("請先由 Admin 建立分類")
-            return
-        record_form("create_record", categories)
-    except httpx.HTTPError as exc:
-        show_error(exc)
+    render_manual_page(request, show_error)
 
 
 def import_page():
     render_import_page(request, show_error)
 
 
-def schema_page():
-    render_schema_page(request, show_error)
-
-
-def categories_page():
-    st.subheader("分類管理")
-    try:
-        st.dataframe(request("GET", "/api/v1/categories"))
-        with st.form("category"):
-            name = st.text_input("新分類名稱", max_chars=64)
-            submitted = st.form_submit_button("新增分類")
-        if submitted:
-            request("POST", "/api/v1/categories", json={"name": name})
-            st.rerun()
-    except httpx.HTTPError as exc:
-        show_error(exc)
+def analysis_page():
+    render_analysis_page(request, show_error)
 
 
 if "token" not in st.session_state:
@@ -218,10 +124,11 @@ else:
     if st.sidebar.button("登出"):
         st.session_state.clear()
         st.rerun()
-    pages = [st.Page(overview_page, title="服務概況"), st.Page(records_page, title="資料列表"),
-             st.Page(schema_page, title="匯入 Schema 範本")]
+    pages = [st.Page(overview_page, title="服務概況")]
+    if user["role"] == "admin":
+        pages.append(st.Page(users_page, title="使用者清單"))
+    pages.append(st.Page(datasets_page, title="建立數據集"))
     if user["role"] in {"admin", "user"}:
         pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
-    if user["role"] == "admin":
-        pages += [st.Page(users_page, title="使用者清單"), st.Page(categories_page, title="分類管理")]
+    pages.append(st.Page(analysis_page, title="資料分析"))
     st.navigation(pages).run()

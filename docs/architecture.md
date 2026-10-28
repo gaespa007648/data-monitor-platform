@@ -42,7 +42,7 @@ Compose 使用 `depends_on` 的健康與成功完成條件控制啟動相依。m
 
 所有應用資料讀寫都經 SQLAlchemy Async ORM 與 asyncmy。每次工作使用獨立 AsyncSession，交易結束後歸還連線；SQLAlchemy Engine 設定 pool_size=5、max_overflow=5、pool_pre_ping、1800 秒回收及 30 秒等待上限。Alembic operations 管理 schema，不在 API 啟動時自動 create_all。
 
-ORM 模型包含 User、Category、Record、ImportBatch、AuditLog，以及匯入 Schema 範本、版本與欄位規則。範本支援私有／共享、選填 data_type、不可改寫的發布版本；ImportBatch 保存版本參照與規則快照。Record 仍維持四個固定業務欄位，使用固定精度數值、UTC 時間、建立者與版本欄位；寫入與稽核同一交易提交。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
+主要數據集流程使用 Dataset、DatasetSchemaVersion、DatasetRecord、DatasetImportBatch。數據集可自訂欄位，Schema 版本不可覆寫，只能附加欄位；記錄以 JSON 欄位儲存經型別驗證的值，並保存寫入時的 Schema 版本。批次匯入保存規則快照，資料與稽核在同一交易提交。既有 Category、Record、ImportBatch 與匯入 Schema 範本模型仍供固定四欄位 API 相容使用，其舊資料不會自動轉成數據集記錄。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
 
 MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-monitor-platform_mariadb_data`。一般 `down` 與容器重建會保留資料，`down -v` 會刪除資料。Volume 不是備份；正式部署仍需另建備份及還原程序。
 
@@ -51,8 +51,8 @@ MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-
 Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資料庫密碼雜湊後發出有效期 15 分鐘的 HS256 JWT。後續請求使用 Bearer token，後端驗證簽章、期限、issuer、audience，並重新確認帳號存在且啟用。
 
 - 公開註冊固定建立 user，不能指定角色。
-- admin 可管理全部資料、建立分類及查看使用者清單。
-- user 可建立及匯入資料，只能修改／刪除自己的記錄。
+- admin 可管理全部數據集與資料、建立分類及查看使用者清單。
+- user 可建立自己的數據集、附加其欄位及寫入資料；既有固定欄位記錄仍只能修改／刪除自己建立的記錄。
 - viewer 僅可讀取共享資料與自身資訊，無寫入或管理權限。
 - Streamlit 以 Session State 保存登入狀態，登出只清除前端 session。
 
@@ -60,7 +60,7 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 
 ## 功能與部署限制
 
-目前可使用註冊登入、使用者查詢、三角色授權、分類建立、資料 CRUD、分頁篩選排序及 CSV／JSON 預檢匯入。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供即時資料接收、Redis、批次 worker、WebSocket 推送、統計分析、Excel、即時圖表與告警。
+Streamlit 目前提供概況、Admin 使用者清單、數據集建立與管理、按 Schema 手動建立資料、CSV／JSON 預檢匯入，以及每頁最多 20 筆的數據集資料檢視；未提供篩選或統計分析。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供即時資料接收、Redis、批次 worker、WebSocket 推送、統計分析、Excel、即時圖表與告警。
 
 目前沒有 refresh token 或後端登出撤銷，密碼變更前已發出的 JWT 仍可使用至原到期時間。登入／註冊限流使用單程序 IP 記憶體視窗，重啟會清除，Streamlit 代理下多名使用者共用同一來源額度。DB runtime 與 migration 尚共用帳號，對外部署前需拆分權限、使用非範本憑證、加入 TLS，並確認指定的 MariaDB 11.7 rolling release 維護策略。
 

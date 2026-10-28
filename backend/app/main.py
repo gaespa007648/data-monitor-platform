@@ -18,6 +18,7 @@ from app.schemas import Registration
 from app.security import create_token, dummy_hash, password_hash
 from app.records import router as records_router
 from app.import_templates import router as schemas_router
+from app.datasets import router as datasets_router
 from app.request_limits import RequestBodyLimit
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,7 @@ app = FastAPI(title="Data Monitor Platform API", version="0.2.0", lifespan=lifes
 app.add_middleware(RequestBodyLimit)
 app.include_router(records_router)
 app.include_router(schemas_router)
+app.include_router(datasets_router)
 
 
 class LoginRequest(BaseModel):
@@ -96,8 +98,9 @@ async def live():
 
 @app.get("/health/ready", tags=["health"])
 async def ready(session: Session):
-    from app.models import Record
+    from app.models import Dataset, Record
     await session.scalar(select(Record.id).limit(1))
+    await session.scalar(select(Dataset.id).limit(1))
     return {"status": "ok", "database": "connected"}
 
 

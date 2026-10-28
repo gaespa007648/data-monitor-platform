@@ -2,7 +2,7 @@
 
 即時資料分析與監控系統，採 FastAPI 提供 API、MariaDB 持久化資料、Streamlit 提供互動介面。
 
-目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、資料 CRUD、分頁篩選排序、CSV／JSON 批量匯入，以及單一 Docker Compose 部署與資料庫持久化。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
+目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入與每頁 20 筆的資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
 
 ## 技術棧
 
@@ -29,7 +29,8 @@ backend/
   migrations/                # Alembic schema 版本
 frontend/
   Dockerfile                 # Streamlit 多階段映像
-  app.py                     # 註冊登入、概況、資料管理及匯入頁面
+  app.py                     # 註冊登入、概況與數據集頁面
+  dataset_ui.py              # 數據集建立、輸入、匯入與檢視
 docs/                        # 對外架構、操作與文件管理說明
 ```
 
@@ -112,13 +113,19 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 | POST `/api/v1/auth/tokens` | JSON 帳密登入，取得 JWT |
 | GET `/api/v1/users/me` | 查看目前登入者 |
 | GET `/api/v1/users` | 管理員取得使用者清單，viewer 回傳 403 |
+| GET／POST `/api/v1/datasets` | 數據集清單與建立 |
+| GET `/api/v1/datasets/{id}` | 數據集及目前 Schema |
+| POST `/api/v1/datasets/{id}/fields` | 只新增欄位，保留既有欄位 |
+| GET／POST `/api/v1/datasets/{id}/records` | 每頁最多 20 筆的檢視／單筆建立 |
+| GET `/api/v1/datasets/{id}/sample` | 產生目前 Schema 的 CSV／JSON 範本 |
+| POST `/api/v1/datasets/{id}/imports` | 預檢與冪等批次匯入 |
 | GET／POST `/api/v1/categories` | 查詢分類；僅 Admin 可建立分類 |
 | GET／POST `/api/v1/records` | 資料分頁查詢／建立 |
 | GET／PATCH／DELETE `/api/v1/records/{id}` | 讀取／更新／刪除記錄；寫入須符合角色與擁有者權限 |
 | POST `/api/v1/record-imports` | CSV／JSON 預檢與冪等批次匯入 |
 | GET／POST `/api/v1/import-schemas` | 選取或建立匯入 Schema 範本，支援選填型別與版本管理 |
 
-Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer token 欄位，即可測試受保護 API。權杖不包含密碼雜湊，API 回應也不回傳該欄位。
+固定四欄位的 `categories`、`records`、`record-imports`、`import-schemas` API 保留給既有用戶端，新的 Streamlit 流程使用數據集 API。Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer token 欄位，即可測試受保護 API。權杖不包含密碼雜湊，API 回應也不回傳該欄位。
 
 ## 測試帳號資訊
 
@@ -129,7 +136,7 @@ Swagger 先呼叫登入端點，複製 `access_token` 至 Authorize 的 bearer t
 | admin | `AdminDemo123!` | 管理全部資料、建立分類及查看使用者清單 |
 | viewer | `ViewerDemo123!` | 查看自身資訊、概況與共享資料；不可寫入 |
 
-也可在 Streamlit「註冊」頁建立自己的 User 帳號，無固定測試密碼。User 可讀取共享資料，建立與匯入資料，僅能修改／刪除自己建立的記錄；Admin 可管理全部記錄。操作方式與格式請見 [使用者與資料管理](docs/user-and-data-management.md)。
+也可在 Streamlit「註冊」頁建立自己的 User 帳號，無固定測試密碼。User 可讀取共享數據集，建立自己的數據集及資料；Admin 可管理全部數據集。既有固定欄位 API 的修改／刪除權限仍依建立者判斷。操作方式與格式請見 [使用者與資料管理](docs/user-and-data-management.md)。
 
 **測試帳號的密碼至少需要 12 個字元**：當 `SEED_DEMO_USERS=true` 時，`.env` 中的 `DEMO_ADMIN_PASSWORD` 與 `DEMO_VIEWER_PASSWORD` 都必須符合此限制；帳號名稱沒有至少 12 個字元的要求。目前初始化流程會先驗證這兩個密碼，再檢查帳號是否存在，因此即使資料庫已有帳號，設定值仍須符合限制。
 
@@ -153,7 +160,7 @@ docker compose up --build -d --wait --wait-timeout 180 --force-recreate migrate 
 
 ## 延伸文件
 
-- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：Schema 設定、範本資料生成、預檢與批次匯入完整步驟。
+- [Streamlit 前端操作手冊](docs/streamlit-user-guide.md)：數據集 Schema、手動輸入、範本資料、預檢、匯入與分頁操作。
 - [系統架構與架構圖](docs/architecture.md)：容器職責、通訊、認證與資料儲存。
 - [使用者與資料管理](docs/user-and-data-management.md)：角色、資料操作與 CSV／JSON 匯入格式。
 - [JWT 認證機制](docs/jwt-authentication.md)：權杖格式、有效期與驗證流程。

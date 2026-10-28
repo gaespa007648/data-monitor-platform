@@ -2,7 +2,9 @@
 import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path.cwd()))
@@ -28,6 +30,18 @@ for username, password in [
     app = login(username, password)
     assert app.session_state["user"]["username"] == username
     assert app.success and "MariaDB connected" in app.success[0].value
+    observed = []
+    original_navigation = st.navigation
+
+    def capture(pages, *args, **kwargs):
+        observed.extend(page.title for page in pages)
+        return original_navigation(pages, *args, **kwargs)
+
+    with patch("streamlit.navigation", side_effect=capture):
+        app.run()
+    expected = (["服務概況", "使用者清單", "建立數據集", "建立資料", "批次匯入", "資料分析"]
+                if username == "admin" else ["服務概況", "建立數據集", "資料分析"])
+    assert observed == expected, observed
     app.sidebar.button[0].click().run()
     assert not app.exception
     assert len(app.text_input) == 2

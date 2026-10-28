@@ -125,3 +125,52 @@ class ImportSchemaField(Base):
     max_length: Mapped[int | None]
     max_digits: Mapped[int | None]
     decimal_places: Mapped[int | None]
+
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_dataset_owner_name"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(String(500), default="")
+    schema_version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class DatasetSchemaVersion(Base):
+    __tablename__ = "dataset_schema_versions"
+    __table_args__ = (UniqueConstraint("dataset_id", "number", name="uq_dataset_schema_number"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"))
+    number: Mapped[int]
+    definition: Mapped[dict] = mapped_column(JSON)
+    rules_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class DatasetImportBatch(Base):
+    __tablename__ = "dataset_import_batches"
+    __table_args__ = (UniqueConstraint("owner_id", "idempotency_key", name="uq_dataset_import_owner_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"))
+    schema_version_id: Mapped[int] = mapped_column(ForeignKey("dataset_schema_versions.id"))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    row_count: Mapped[int]
+    schema_snapshot: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class DatasetRecord(Base):
+    __tablename__ = "dataset_records"
+    __table_args__ = (Index("ix_dataset_records_dataset_id", "dataset_id", "id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"))
+    schema_version_id: Mapped[int] = mapped_column(ForeignKey("dataset_schema_versions.id"))
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    import_batch_id: Mapped[int | None] = mapped_column(ForeignKey("dataset_import_batches.id"))
+    source: Mapped[str] = mapped_column(String(10))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
