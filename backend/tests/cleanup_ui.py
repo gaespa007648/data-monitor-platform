@@ -7,7 +7,8 @@ from sqlalchemy import or_, select
 from app.database import SessionFactory, engine
 from app.models import (AuditLog, ImportBatch, ImportSchemaField, ImportSchemaTemplate,
                         ImportSchemaVersion, Record, User, Dataset, DatasetImportBatch,
-                        DatasetRecord, DatasetSchemaVersion, DatasetUniqueValue)
+                        DatasetRecord, DatasetSchemaVersion, DatasetUniqueValue,
+                        DatasetMonitor, DatasetMonitorAlert)
 
 
 async def cleanup(username):
@@ -21,7 +22,10 @@ async def cleanup(username):
             templates = select(ImportSchemaTemplate.id).where(ImportSchemaTemplate.owner_id == user.id)
             versions = select(ImportSchemaVersion.id).where(ImportSchemaVersion.template_id.in_(templates))
             datasets = select(Dataset.id).where(Dataset.owner_id == user.id)
+            monitors = select(DatasetMonitor.id).where(DatasetMonitor.dataset_id.in_(datasets))
             for model, condition in [
+                (DatasetMonitorAlert, DatasetMonitorAlert.monitor_id.in_(monitors)),
+                (DatasetMonitor, DatasetMonitor.dataset_id.in_(datasets)),
                 (DatasetUniqueValue, DatasetUniqueValue.dataset_id.in_(datasets)),
                 (DatasetRecord, or_(DatasetRecord.owner_id == user.id, DatasetRecord.dataset_id.in_(datasets))),
                 (DatasetImportBatch, or_(DatasetImportBatch.owner_id == user.id, DatasetImportBatch.dataset_id.in_(datasets))),

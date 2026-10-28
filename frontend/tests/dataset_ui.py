@@ -58,7 +58,7 @@ with httpx.Client(base_url=base, timeout=30) as client:
     with patch("streamlit.navigation", side_effect=capture):
         full_app.run()
     assert not full_app.exception
-    assert observed == ["服務概況", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析"]
+    assert observed == ["服務概況", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析", "即時監控"]
 
     def page(name, editor=None):
         app = AppTest.from_string(definitions + "\n" + name + "()", default_timeout=30)

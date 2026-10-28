@@ -165,7 +165,8 @@ class DatasetImportBatch(Base):
 
 class DatasetRecord(Base):
     __tablename__ = "dataset_records"
-    __table_args__ = (Index("ix_dataset_records_dataset_id", "dataset_id", "id"),)
+    __table_args__ = (Index("ix_dataset_records_dataset_id", "dataset_id", "id"),
+                      Index("ix_dataset_records_dataset_created", "dataset_id", "created_at"))
     id: Mapped[int] = mapped_column(primary_key=True)
     dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"))
     schema_version_id: Mapped[int] = mapped_column(ForeignKey("dataset_schema_versions.id"))
@@ -185,3 +186,28 @@ class DatasetUniqueValue(Base):
     record_id: Mapped[int] = mapped_column(ForeignKey("dataset_records.id"))
     field_name: Mapped[str] = mapped_column(String(64, collation="utf8mb4_bin"))
     value_hash: Mapped[str] = mapped_column(String(64))
+
+
+class DatasetMonitor(Base):
+    __tablename__ = "dataset_monitors"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    chart_type: Mapped[str] = mapped_column(String(10))
+    window_seconds: Mapped[int]
+    interval_seconds: Mapped[int]
+    rules: Mapped[list] = mapped_column(JSON)
+    active: Mapped[bool] = mapped_column(default=False)
+    activated_at: Mapped[datetime | None] = mapped_column(TimestampType)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class DatasetMonitorAlert(Base):
+    __tablename__ = "dataset_monitor_alerts"
+    __table_args__ = (UniqueConstraint("monitor_id", "record_id", name="uq_monitor_record_alert"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    monitor_id: Mapped[int] = mapped_column(ForeignKey("dataset_monitors.id"), index=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("dataset_records.id"), index=True)
+    reasons: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)

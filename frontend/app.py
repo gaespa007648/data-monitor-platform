@@ -7,6 +7,7 @@ import streamlit as st
 from auth_storage import browser_token
 from dataset_ui import (render_dataset_page, render_manage_records_page, render_manual_page,
                         render_import_page, render_analysis_page)
+from monitor_ui import render_monitor_page, stop_generator
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -118,6 +119,10 @@ def analysis_page():
     render_analysis_page(request, show_error)
 
 
+def monitor_page():
+    render_monitor_page(request, show_error, API_BASE_URL, st.session_state["token"])
+
+
 if st.session_state.get("clear_browser_token"):
     result = browser_token("clear")
     if isinstance(result, dict) and result.get("action") == "clear":
@@ -145,6 +150,7 @@ else:
     user = st.session_state["user"]
     st.sidebar.write(f"目前使用者：{user['username']} · {user['role'].title()}")
     if st.sidebar.button("登出"):
+        stop_generator()
         st.session_state.clear()
         st.session_state["clear_browser_token"] = True
         st.rerun()
@@ -156,4 +162,5 @@ else:
     if user["role"] in {"admin", "user"}:
         pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
     pages.append(st.Page(analysis_page, title="資料分析"))
+    pages.append(st.Page(monitor_page, title="即時監控"))
     st.navigation(pages).run()

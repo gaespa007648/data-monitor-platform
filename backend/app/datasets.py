@@ -14,7 +14,7 @@ from app.dataset_rules import DatasetDefinition, DatasetField, decode_payload, u
 from app.dependencies import CurrentUser, Session, require_owner, require_writer
 from app.import_rules import no_duplicates, parse_source
 from app.models import (AuditLog, Dataset, DatasetImportBatch, DatasetRecord,
-                        DatasetSchemaVersion, DatasetUniqueValue, User)
+                        DatasetSchemaVersion, DatasetUniqueValue, DatasetMonitorAlert, User)
 from app.schemas import StrictModel
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["datasets"])
@@ -194,6 +194,8 @@ async def create_record(dataset_id: int, data: ManualRecord, request: Request, s
     await session.flush()
     session.add_all([DatasetUniqueValue(dataset_id=dataset.id, record_id=record.id,
         field_name=name, value_hash=value_hash) for _, name, value_hash in claims])
+    from app.monitors import record_alerts
+    await record_alerts(session, dataset.id, [record])
     audit(session, user, "dataset.record.create", record.id)
     await session.commit()
     return record_output(record, version.number)
@@ -257,6 +259,9 @@ async def delete_record(dataset_id: int, record_id: int, session: Session, user:
         DatasetUniqueValue.record_id == record_id))).all()
     for value in unique_values:
         await session.delete(value)
+    for alert in (await session.scalars(select(DatasetMonitorAlert).where(
+        DatasetMonitorAlert.record_id == record_id))).all():
+        await session.delete(alert)
     await session.flush()
     await session.delete(record)
     audit(session, user, "dataset.record.delete", record_id)
@@ -311,6 +316,8 @@ async def import_records(dataset_id: int, session: Session, user: CurrentUser,
     await session.flush()
     session.add_all([DatasetUniqueValue(dataset_id=dataset.id, record_id=records[index - 1].id,
         field_name=name, value_hash=value_hash) for index, name, value_hash in claims])
+    from app.monitors import record_alerts
+    await record_alerts(session, dataset.id, records)
     audit(session, user, "dataset.import", batch.id)
     await session.commit()
     return {"preview": False, "batch_id": batch.id, "row_count": len(rows), "schema_version": version.number, "replayed": False}

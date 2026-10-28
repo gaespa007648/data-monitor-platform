@@ -8,7 +8,7 @@
 flowchart LR
     Browser[使用者瀏覽器] -->|localhost:8501| Frontend[frontend / Streamlit]
     Client[API 使用者] -->|localhost:8000| API[api / FastAPI]
-    Frontend -->|app_net / HTTP api:8000| API
+    Frontend -->|app_net / HTTP 與 WebSocket api:8000| API
     API -->|data_net / Async ORM| DB[(db / MariaDB 11.7.2)]
     Migrate[migrate / Alembic、帳號與範例初始化] -->|data_net| DB
     DB --> Volume[(mariadb_data named volume)]
@@ -18,8 +18,8 @@ flowchart LR
 | --- | --- | --- |
 | db | MariaDB 11.7.2、InnoDB、utf8mb4 資料儲存 | 常駐，健康檢查確認連線與 InnoDB 初始化 |
 | migrate | Alembic schema 升版、選用的測試帳號建立與密碼同步、缺少的範例數據集匯入 | 一次性，成功後結束碼為 0 |
-| api | FastAPI、Pydantic、JWT、角色授權、Async ORM | 常駐，提供 REST 與 Swagger |
-| frontend | Streamlit 多頁面、登入／登出、服務概況與管理員清單 | 常駐，透過 HTTPX 呼叫 API |
+| api | FastAPI、Pydantic、JWT、角色授權、Async ORM | 常駐，提供 REST、WebSocket 與 Swagger |
+| frontend | Streamlit 多頁面、登入／登出、數據集、資料分析及即時監控 | 常駐，透過 HTTPX 與 WebSocket 連接 API |
 
 所有服務由單一 `compose.yaml` 管理，不分環境檔。`app_net` 連接 frontend 與 api；`data_net` 為 internal 網路，連接 db、migrate 與 api。前端不直接連資料庫。
 
@@ -42,7 +42,7 @@ Compose 使用 `depends_on` 的健康與成功完成條件控制啟動相依。m
 
 所有應用資料讀寫都經 SQLAlchemy Async ORM 與 asyncmy。每次工作使用獨立 AsyncSession，交易結束後歸還連線；SQLAlchemy Engine 設定 pool_size=5、max_overflow=5、pool_pre_ping、1800 秒回收及 30 秒等待上限。Alembic operations 管理 schema，不在 API 啟動時自動 create_all。
 
-主要數據集流程使用 Dataset、DatasetSchemaVersion、DatasetRecord、DatasetImportBatch 與 DatasetUniqueValue。數據集可自訂欄位，Schema 版本不可覆寫，只能附加欄位；記錄以 JSON 欄位儲存經型別驗證的值，並保存寫入時的 Schema 版本。標記 unique 的欄位另由資料庫唯一索引保障，批次匯入保存規則快照，資料與稽核在同一交易提交。既有 Category、Record、ImportBatch 與匯入 Schema 範本模型仍供固定四欄位 API 相容使用，其舊資料不會自動轉成數據集記錄。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
+主要數據集流程使用 Dataset、DatasetSchemaVersion、DatasetRecord、DatasetImportBatch 與 DatasetUniqueValue。數據集可自訂欄位，Schema 版本不可覆寫，只能附加欄位；記錄以 JSON 欄位儲存經型別驗證的值，並保存寫入時的 Schema 版本。標記 unique 的欄位另由資料庫唯一索引保障，批次匯入保存規則快照，資料與稽核在同一交易提交。DatasetMonitor 保存監控條件與啟用狀態，DatasetMonitorAlert 保存設定檔、異常資料 ID 與異常原因。每次資料寫入會在同一交易中檢查啟用中的監控並記錄告警；圖表查詢依 DatasetRecord.created_at 計算指定時間區間的新增筆數。既有 Category、Record、ImportBatch 與匯入 Schema 範本模型仍供固定四欄位 API 相容使用，其舊資料不會自動轉成數據集記錄。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
 
 MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-monitor-platform_mariadb_data`。一般 `down` 與容器重建會保留資料，`down -v` 會刪除資料。Volume 不是備份；正式部署仍需另建備份及還原程序。
 
@@ -62,7 +62,7 @@ Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資�
 
 ## 功能與部署限制
 
-Streamlit 目前提供概況、Admin 使用者清單、數據集建立與 Schema 管理、按 Schema 手動建立資料、CSV／JSON 預檢匯入、依欄位型別篩選的統計圖表與 Excel 下載，以及獨立「管理數據集」頁的每頁最多 10 筆資料檢視、欄位排序與權限受控的單列刪除。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供即時資料接收、Redis、批次 worker、WebSocket 推送、即時圖表與告警。
+Streamlit 目前提供概況、Admin 使用者清單、數據集建立與 Schema 管理、按 Schema 手動建立資料、CSV／JSON 預檢匯入、依欄位型別篩選的統計圖表與 Excel 下載、即時監控與 WebSocket 模擬生成器，以及獨立「管理數據集」頁的每頁最多 10 筆資料檢視、欄位排序與權限受控的單列刪除。監控圖表與異常資料以每秒 REST 查詢更新；模擬生成器使用 WebSocket 接收寫入結果。資料分析頁只顯示篩選與統計，不顯示資料表；統計及 Excel 匯出會透過現有分頁 API 讀取整個數據集，大量資料可能增加載入時間與記憶體使用量。既有固定四欄位的 CRUD 與篩選排序 API 保留，但不在新前端選單。角色異動介面屬系統管理範圍，目前尚未提供；資料依共享空間規則讀取。尚未提供外部即時資料接收、Redis 與獨立批次 worker。
 
 目前沒有 refresh token 或後端登出撤銷，密碼變更前已發出的 JWT 仍可使用至原到期時間。登入／註冊限流使用單程序 IP 記憶體視窗，重啟會清除，Streamlit 代理下多名使用者共用同一來源額度。DB runtime 與 migration 尚共用帳號，對外部署前需拆分權限、使用非範本憑證、加入 TLS，並確認指定的 MariaDB 11.7 rolling release 維護策略。
 

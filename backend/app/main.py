@@ -19,6 +19,8 @@ from app.security import ACCESS_TOKEN_EXPIRE_SECONDS, create_token, dummy_hash, 
 from app.records import router as records_router
 from app.import_templates import router as schemas_router
 from app.datasets import router as datasets_router
+from app.monitors import router as monitors_router
+from app.generator import router as generator_router
 from app.request_limits import RequestBodyLimit
 
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +38,8 @@ app.add_middleware(RequestBodyLimit)
 app.include_router(records_router)
 app.include_router(schemas_router)
 app.include_router(datasets_router)
+app.include_router(monitors_router)
+app.include_router(generator_router)
 
 
 class LoginRequest(BaseModel):
