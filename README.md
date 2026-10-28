@@ -93,6 +93,7 @@ docker compose up -d --wait --wait-timeout 180
 docker compose down --timeout 30
 docker compose build
 docker compose up -d --wait --wait-timeout 180
+docker image prune -f
 ```
 
 ### 資料持久化
