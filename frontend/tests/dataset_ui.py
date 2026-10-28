@@ -208,4 +208,43 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert [element.value for element in analysis.header] == ["選擇數據集", "資料分析"]
     assert not any(element.label == "頁碼" for element in analysis.number_input)
 
-print("PASS: dataset management table sorting, deletion and ten-row pagination; analysis has no table")
+    # JSON follows the same Streamlit preview/confirm path as CSV, with native JSON types.
+    app = page("manage_page")
+    widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
+    widget(app, "radio", "匯入方式").set_value("批次匯入").run()
+    widget(app, "selectbox", "檔案格式").set_value("json").run()
+    json_rows = [
+        {"sepal_length": 6.1, "sepal_width": 3.1, "petal_length": 4.2,
+         "petal_width": 1.3, "species": "versicolor", "notes": "json-one"},
+        {"sepal_length": 6.2, "sepal_width": 3.2, "petal_length": 4.3,
+         "petal_width": 1.4, "species": "versicolor", "notes": None},
+    ]
+    upload = SimpleNamespace(name="iris.json", getvalue=lambda: json.dumps(json_rows).encode())
+    before = client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"]
+    with patch("streamlit.file_uploader", return_value=upload):
+        app.run()
+        assert not any(item.label == "排除第一列欄名" for item in app.checkbox)
+        widget(app, "button", "預檢檔案").click().run()
+        assert not app.exception and app.session_state["dataset_import_valid"]
+        assert app.session_state["dataset_preview"]["row_count"] == 2
+        assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == before
+        widget(app, "button", "確認匯入").click().run()
+        assert not app.exception and app.session_state["dataset_import_done"]
+    records = client.get(f"/api/v1/datasets/{dataset_id}/records", params={"page_size": 20}).json()
+    assert records["total"] == before + 2
+    assert any(row["data"].get("notes") == "json-one" for row in records["items"])
+
+    for key, bad_json in [
+        ("object", b'{"sepal_length": 5.1}'),
+        ("numeric_string", b'[{"sepal_length":"5.1","sepal_width":3.1,"petal_length":4.2,"petal_width":1.3,"species":"x"}]'),
+        ("duplicate_key", b'[{"sepal_length":5.1,"sepal_length":5.2}]'),
+        ("nested", b'[{"sepal_length":{"value":5.1},"sepal_width":3.1,"petal_length":4.2,"petal_width":1.3,"species":"x"}]'),
+    ]:
+        response = client.post(f"/api/v1/datasets/{dataset_id}/imports",
+            params={"schema_version": 2, "preview": True},
+            headers={"Idempotency-Key": f"json-{key}"},
+            files={"file": ("invalid.json", bad_json, "application/json")})
+        assert response.status_code == 422, (key, response.status_code, response.text)
+    assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == before + 2
+
+print("PASS: dataset management, JSON preview/import and invalid JSON rejection")

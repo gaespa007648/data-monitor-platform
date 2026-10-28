@@ -44,6 +44,17 @@ flowchart LR
 
 檔案上限為 **2 MiB、1000 筆資料**。CSV 使用 UTF-8（可含 BOM）。勾選排除首列時，欄名不可重複、須與 Schema 完全一致，順序不限；取消勾選時，檔案每列欄位數須符合 Schema，順序也須相同。兩種模式都不可有列寬不一致。JSON 頂層須為物件陣列，不接受重複 key 或巢狀值。JSON 指定型別時應使用對應原生型別，例如 integer 使用數字；CSV 文字會依指定型別解析。未指定型別仍只接受字串、有限數字或布林值。切換數據集、Schema、格式、檔案或首列選項後，需重新預檢。同一操作的網路重試使用冪等鍵以避免重複寫入。
 
+JSON 檔案須為 UTF-8（可含 BOM），副檔名為 `.json`，頂層是 **1–1000 個物件的陣列**。物件的 key 必須對應數據集 Schema 欄名，區分大小寫；必填欄位不可缺少，多餘欄位也會被拒絕。以下範例適用於已定義 `Id`（integer）、`name`（string）、`value`（decimal）、`active`（boolean）、`recorded_at`（datetime）的數據集：
+
+```json
+[
+  {"Id": 1, "name": "sample-a", "value": 12.5, "active": true, "recorded_at": "2026-10-28T10:00:00+08:00"},
+  {"Id": 2, "name": "sample-b", "value": 13.25, "active": false, "recorded_at": "2026-10-28T02:01:00Z"}
+]
+```
+
+integer／decimal 須用 JSON 數字，不能使用引號包成字串；boolean 須為 `true` 或 `false`；datetime 須為含時區的 ISO 8601 字串。選填欄位可省略，只有允許 null 的欄位可填 `null`。欄位值不可包含巢狀物件或陣列，同一物件內不得有重複 key；整批資料只要有一列未通過驗證，就不會寫入任何一列。
+
 unique 以**同一數據集、同一欄位**為範圍；有值時不得重複。若欄位允許省略或 null，這兩種情況可出現多次。資料型別為數值時，`1` 與 `1.00` 視為相同。舊數據集的欄位預設 unique=false，既有欄位不能事後改成 unique。
 
 「匯入資料」沿用管理頁已選的數據集，不會另外顯示數據集清單頁碼。沒有該數據集寫入權的使用者只能檢視資料。
