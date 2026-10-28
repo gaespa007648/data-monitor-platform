@@ -8,6 +8,7 @@ from auth_storage import browser_token
 from dataset_ui import (render_dataset_page, render_manage_records_page, render_manual_page,
                         render_import_page, render_analysis_page)
 from monitor_ui import render_monitor_page, stop_generator
+from system_admin_ui import render_system_admin_page
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -91,12 +92,7 @@ def overview_page():
 
 
 def users_page():
-    st.subheader("使用者清單")
-    page = st.number_input("使用者頁碼", min_value=1, step=1)
-    try:
-        st.dataframe(request("GET", "/api/v1/users", params={"page": page, "page_size": 50}), use_container_width=True)
-    except httpx.HTTPError as exc:
-        show_error(exc)
+    render_system_admin_page(request, show_error, st.session_state["user"])
 
 
 def datasets_page():
@@ -155,8 +151,7 @@ else:
         st.session_state["clear_browser_token"] = True
         st.rerun()
     pages = [st.Page(overview_page, title="服務概況")]
-    if user["role"] == "admin":
-        pages.append(st.Page(users_page, title="使用者清單"))
+    pages.append(st.Page(users_page, title="系統管理"))
     pages.append(st.Page(datasets_page, title="建立數據集"))
     pages.append(st.Page(manage_page, title="管理數據集"))
     if user["role"] in {"admin", "user"}:

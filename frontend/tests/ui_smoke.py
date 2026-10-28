@@ -39,8 +39,8 @@ for username, password in [
 
     with patch("streamlit.navigation", side_effect=capture):
         app.run()
-    expected = (["服務概況", "使用者清單", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析", "即時監控"]
-                if username == "admin" else ["服務概況", "建立數據集", "管理數據集", "資料分析", "即時監控"])
+    expected = (["服務概況", "系統管理", "建立數據集", "管理數據集", "建立資料", "批次匯入", "資料分析", "即時監控"]
+                if username == "admin" else ["服務概況", "系統管理", "建立數據集", "管理數據集", "資料分析", "即時監控"])
     assert observed == expected, observed
     app.sidebar.button[0].click().run()
     assert not app.exception

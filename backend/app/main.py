@@ -5,7 +5,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
+from typing import Literal
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.concurrency import run_in_threadpool
@@ -60,6 +61,18 @@ class UserResponse(BaseModel):
     username: str
     role: str
     is_active: bool
+
+
+class UserPage(BaseModel):
+    items: list[UserResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class RoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["admin", "user", "viewer"]
 
 
 @app.exception_handler(RequestValidationError)
@@ -143,10 +156,36 @@ async def me(user: CurrentUser):
     return user
 
 
-@app.get("/api/v1/users", response_model=list[UserResponse], tags=["users"])
+@app.get("/api/v1/users", response_model=UserPage, tags=["users"])
 async def list_users(session: Session, user: CurrentUser, page: int = 1, page_size: int = 50):
     require_admin(user)
     if page < 1 or not 1 <= page_size <= 100:
         raise HTTPException(422, "Invalid page or page_size")
-    return (await session.scalars(select(User).order_by(User.id)
+    total = await session.scalar(select(func.count(User.id)))
+    items = (await session.scalars(select(User).order_by(User.id)
         .offset((page - 1) * page_size).limit(page_size))).all()
+    return UserPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@app.patch("/api/v1/users/{user_id}/role", response_model=UserResponse, tags=["users"])
+async def update_user_role(user_id: int, data: RoleUpdate, session: Session, user: CurrentUser):
+    require_admin(user)
+    # Serialize role changes by locking all current active admins in stable order.
+    admins = (await session.scalars(select(User).where(User.role == "admin", User.is_active.is_(True))
+        .order_by(User.id).with_for_update().execution_options(populate_existing=True))).all()
+    actor = await session.scalar(select(User).where(User.id == user.id)
+        .with_for_update().execution_options(populate_existing=True))
+    if actor is None or not actor.is_active:
+        raise HTTPException(401, "Account no longer active")
+    require_admin(actor)
+    target = await session.scalar(select(User).where(User.id == user_id)
+        .with_for_update().execution_options(populate_existing=True))
+    if target is None:
+        raise HTTPException(404, "User not found")
+    if target.role == "admin" and target.is_active and data.role != "admin" and len(admins) <= 1:
+        raise HTTPException(409, "At least one active administrator is required")
+    if target.role != data.role:
+        target.role = data.role
+        session.add(AuditLog(actor_id=user.id, action="user.role.update", resource_id=target.id))
+        await session.commit()
+    return target
