@@ -4,11 +4,10 @@ from io import BytesIO
 from unittest.mock import patch
 from zipfile import is_zipfile
 
-import altair as alt
 from openpyxl import load_workbook
 
-from analysis_ui import apply_filters, render_analysis, render_chart
-from export_utils import chart_png_bytes, excel_bytes, safe_filename_part
+from analysis_ui import apply_filters, render_analysis
+from export_utils import excel_bytes, safe_filename_part
 
 
 def main():
@@ -45,9 +44,6 @@ def main():
     empty_book.close()
     assert safe_filename_part('iris/stock:2026') == "iris_stock_2026"
 
-    chart = alt.Chart(alt.Data(values=[{"x": "a", "y": 1}])).mark_bar().encode(x="x:N", y="y:Q")
-    assert chart_png_bytes(chart.to_json()).startswith(b"\x89PNG\r\n\x1a\n")
-
     dataset.update({"id": 7, "name": "iris/stocks"})
     with patch("analysis_ui.load_records", return_value=rows), patch("analysis_ui.render_statistics"):
         with patch("analysis_ui.render_filters", return_value={}), patch("analysis_ui.st.download_button") as button:
@@ -61,13 +57,7 @@ def main():
             assert options["file_name"] == "iris_stocks-filtered.xlsx"
             assert len(list(load_workbook(BytesIO(options["data"]), read_only=True).active.rows)) == 2
 
-    with patch("analysis_ui.st.altair_chart"), patch("analysis_ui.st.download_button") as button:
-        render_chart(chart, dataset, "value-histogram")
-        options = button.call_args.kwargs
-        assert options["file_name"] == "iris_stocks-value-histogram.png"
-        assert options["mime"] == "image/png"
-        assert options["data"].startswith(b"\x89PNG\r\n\x1a\n")
-    print("Excel and PNG export checks passed")
+    print("Excel export checks passed")
 
 
 if __name__ == "__main__":

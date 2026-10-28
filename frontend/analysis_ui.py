@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from display_format import CHART_NUMBER_FORMAT, chart_number, display_bounds, display_number
-from export_utils import EXCEL_MIME, chart_png_bytes, excel_bytes, safe_filename_part
+from export_utils import EXCEL_MIME, excel_bytes, safe_filename_part
 
 
 SUPPORTED = {"datetime", "integer", "decimal", "boolean", "string"}
@@ -70,14 +70,7 @@ def boxplot_summary(rows, field):
             "平均值": sum(values) / len(values)}
 
 
-def render_chart(chart, dataset, chart_name):
-    st.altair_chart(chart, use_container_width=True)
-    st.download_button("儲存", data=chart_png_bytes(chart.to_json()),
-        file_name=f"{safe_filename_part(dataset['name'])}-{safe_filename_part(chart_name)}.png",
-        mime="image/png", key=f"analysis_png_{dataset['id']}_{chart_name}")
-
-
-def render_boxplot(summary, field, dataset):
+def render_boxplot(summary, field):
     data = pd.DataFrame([{"欄位": field, **{name: chart_number(value) for name, value in summary.items()}}])
     tooltips = [alt.Tooltip(f"{name}:Q", format=CHART_NUMBER_FORMAT) for name in summary]
     base = alt.Chart(data).encode(y=alt.Y("欄位:N", axis=None, title=None), tooltip=tooltips)
@@ -88,8 +81,7 @@ def render_boxplot(summary, field, dataset):
         x="第一四分位數:Q", x2="第三四分位數:Q")
     middle = base.mark_tick(color="white", thickness=3, size=38).encode(x="中位數:Q")
     average = base.mark_point(shape="diamond", filled=True, color="#e45756", size=140).encode(x="平均值:Q")
-    render_chart((whisker + box + middle + average).properties(height=110), dataset,
-                 f"{field}-boxplot")
+    st.altair_chart((whisker + box + middle + average).properties(height=110), use_container_width=True)
     st.caption("鬚線：最小／最大值；箱體：第一／第三四分位數；白線：中位數；紅色菱形：平均值。")
 
 
@@ -215,11 +207,11 @@ def render_statistics(dataset, rows):
             return
         st.markdown("**數值分布（Histogram）**")
         bins = pd.DataFrame(histogram(rows, selected))
-        render_chart(alt.Chart(bins).mark_bar().encode(
+        st.altair_chart(alt.Chart(bins).mark_bar().encode(
             x=alt.X("區間:N", sort=None, title=selected), y=alt.Y("筆數:Q", title="筆數"),
-            tooltip=["區間:N", "筆數:Q"]), dataset, f"{selected}-histogram")
+            tooltip=["區間:N", "筆數:Q"]), use_container_width=True)
         st.markdown("**箱型圖（最小值、最大值、平均值與中位數）**")
-        render_boxplot(summary, selected, dataset)
+        render_boxplot(summary, selected)
         for column, name in zip(st.columns(4), ("最小值", "最大值", "平均值", "中位數")):
             column.metric(name, display_number(summary[name]))
     elif kind in CATEGORICAL:
@@ -235,11 +227,11 @@ def render_statistics(dataset, rows):
                                key=f"analysis_group_measure_{dataset['id']}")
         chart_data = pd.DataFrame([{"類別": row["類別"], measure: chart_number(row[measure])}
                                    for row in aggregate])
-        render_chart(alt.Chart(chart_data).mark_bar().encode(
+        st.altair_chart(alt.Chart(chart_data).mark_bar().encode(
             x=alt.X("類別:N", sort=None),
             y=alt.Y(f"{measure}:Q", axis=alt.Axis(format=CHART_NUMBER_FORMAT)),
             tooltip=["類別:N", alt.Tooltip(f"{measure}:Q", format=CHART_NUMBER_FORMAT)]),
-            dataset, f"{selected}-{target}-group-by-{measure}")
+            use_container_width=True)
         st.dataframe([{name: display_number(value) if isinstance(value, Decimal) else value
                        for name, value in row.items()} for row in aggregate],
                      hide_index=True, use_container_width=True)
@@ -254,10 +246,10 @@ def render_statistics(dataset, rows):
             return
         chart_data = pd.DataFrame([{"時間": row["時間"], "數值": chart_number(row["數值"])}
                                    for row in points])
-        render_chart(alt.Chart(chart_data).mark_line(point=True).encode(
+        st.altair_chart(alt.Chart(chart_data).mark_line(point=True).encode(
             x=alt.X("時間:T"), y=alt.Y("數值:Q", axis=alt.Axis(format=CHART_NUMBER_FORMAT)),
             tooltip=[alt.Tooltip("時間:T"), alt.Tooltip("數值:Q", format=CHART_NUMBER_FORMAT)]),
-            dataset, f"{selected}-{target}-trend")
+            use_container_width=True)
 
 
 def render_analysis(dataset, request):

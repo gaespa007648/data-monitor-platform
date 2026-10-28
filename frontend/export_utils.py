@@ -1,11 +1,9 @@
-"""Create filtered Excel workbooks and chart PNG files for Streamlit downloads."""
+"""Create filtered Excel workbooks for Streamlit downloads."""
 import io
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import streamlit as st
-import vl_convert as vlc
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
 
@@ -54,8 +52,3 @@ def excel_bytes(dataset, rows):
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()
-
-
-@st.cache_data(show_spinner=False, max_entries=32)
-def chart_png_bytes(spec_json):
-    return vlc.vegalite_to_png(spec_json, scale=2)
