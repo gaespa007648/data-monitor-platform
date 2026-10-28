@@ -29,7 +29,9 @@ for username, password in [
 ]:
     app = login(username, password)
     assert app.session_state["user"]["username"] == username
-    assert app.success and "MariaDB connected" in app.success[0].value
+    assert [heading.value for heading in app.title] == ["產品簡介"]
+    assert [heading.value for heading in app.header] == [
+        "系統管理", "建立數據集", "管理數據集", "資料分析", "即時監控"]
     observed = []
     original_navigation = st.navigation
 
@@ -39,10 +41,10 @@ for username, password in [
 
     with patch("streamlit.navigation", side_effect=capture):
         app.run()
-    expected = ["服務概況", "系統管理", "建立數據集", "管理數據集", "資料分析", "即時監控"]
+    expected = ["產品簡介", "系統管理", "建立數據集", "管理數據集", "資料分析", "即時監控"]
     assert observed == expected, observed
     app.sidebar.button[0].click().run()
     assert not app.exception
     assert len(app.text_input) == 2
 
-print("PASS: Streamlit invalid login, admin/viewer login, API/DB overview, logout")
+print("PASS: Streamlit invalid login, admin/viewer login, product introduction, logout")

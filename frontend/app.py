@@ -8,7 +8,7 @@ from auth_storage import browser_token
 from dataset_ui import render_dataset_page, render_manage_records_page, render_analysis_page
 from monitor_ui import render_monitor_page, stop_generator
 from system_admin_ui import render_system_admin_page
-from ui_heading import page_title
+from ui_heading import page_title, section
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 st.set_page_config(page_title="即時資料分析與監控系統", page_icon="📊", layout="wide")
@@ -80,14 +80,33 @@ def registration_page():
 
 
 def overview_page():
-    page_title("服務概況")
-    try:
-        health = request("GET", "/health/ready")
-        st.success(f"FastAPI 正常 · MariaDB {health['database']}")
-        st.json(st.session_state["user"])
-        st.info("User 可建立與管理自己的資料，Viewer 僅可讀取，Admin 可管理全部資料。")
-    except httpx.HTTPError as exc:
-        show_error(exc)
+    page_title("產品簡介")
+    st.write("即時資料分析與監控系統讓您建立具自訂欄位的數據集、匯入與分析資料，並追蹤新寫入的資料。從左側選單進入各功能。")
+
+    section("系統管理")
+    st.write("Admin 可在使用者列表編輯帳號角色，查看 FastAPI 與資料庫狀態，以及查詢操作日誌。")
+    st.markdown("1. 從左側開啟「系統管理」，在「使用者列表」修改角色後按「儲存角色變更」。\n"
+                "2. 向下查看「系統狀態監控」、「資料庫狀態監控」與「系統日誌」；列表與日誌可在底部切換頁面。")
+    st.caption("此頁僅供 Admin 查看與操作。")
+
+    section("建立數據集")
+    st.write("建立數據集時可定義 Schema，包括欄位名稱、資料型別、必填、允許 null 與唯一值規則；既有數據集只能新增欄位。")
+    st.markdown("1. 開啟「建立數據集」，輸入名稱並設定欄位，按「建立數據集」。\n"
+                "2. 要擴充 Schema，將「數據集操作」切換為「編輯數據集」，選取數據集後新增欄位。")
+
+    section("管理數據集")
+    st.write("選取數據集後，可檢視、排序、分頁查看其中的資料；有權限的使用者也能新增或匯入資料。")
+    st.markdown("1. 開啟「管理數據集」並選擇數據集，在「數據檢視」查看資料。\n"
+                "2. 在下方「匯入資料」選擇「手動新增」填寫單筆資料，或選擇「批次匯入」上傳 CSV／JSON，預檢後確認匯入。")
+
+    section("資料分析")
+    st.write("可依數據集欄位篩選資料，對數值、類別或時間欄位產生統計與圖表。")
+    st.markdown("開啟「資料分析」，選擇數據集，在「篩選器」設定條件，再於「統計分析」指定分析欄位。")
+
+    section("即時監控")
+    st.write("可建立監控設定，觀察數據集各時間區間的新寫入筆數與異常資料；模擬生成器可每秒產生測試資料。")
+    st.markdown("1. 開啟「即時監控」，在「新增即時監控」選擇數據集、圖表與告警條件，儲存或建立並啟用。\n"
+                "2. 在「查看即時監控」選取設定查看圖表與告警；選取數據集後可展開「模擬資料生成器」並按「開始」或「停止」。")
 
 
 def users_page():
@@ -149,7 +168,7 @@ else:
         st.session_state.clear()
         st.session_state["clear_browser_token"] = True
         st.rerun()
-    pages = [st.Page(overview_page, title="服務概況")]
+    pages = [st.Page(overview_page, title="產品簡介")]
     pages.append(st.Page(users_page, title="系統管理"))
     pages.append(st.Page(datasets_page, title="建立數據集"))
     pages.append(MANAGE_DATASET_PAGE)

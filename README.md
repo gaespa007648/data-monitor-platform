@@ -48,6 +48,8 @@ docker compose ps -a
 
 macOS／Linux 複製指令改用 `cp .env.example .env`，其餘 Compose 指令相同。第一次需下載映像與建構套件，可能需要數分鐘。已存在 `.env` 時不要重新覆寫，請保留既有 DB 密碼。
 
+Compose 啟動時，`migrate` 會檢查 `data/example-Iris.csv` 與 `data/example-vega-stocks.csv` 對應的數據集。若缺少完整名稱為 `example-iris` 或 `example-vega-stocks` 的數據集，就會自動建立 Schema 並匯入 CSV 資料；已有同名數據集時會跳過，不覆蓋既有內容。登入 Streamlit 後可在「管理數據集」選擇並查看這兩份範例。
+
 ### 啟動前設定檢查：`docker compose config --quiet`
 
 這行指令會解析 `compose.yaml`、套用 `.env` 與目前 shell 的環境變數，檢查 YAML 格式、Compose 設定結構、服務相依關係及必要變數是否可解析。`--quiet` 表示不印出展開後的設定；成功時通常沒有輸出，結束碼為 0。它不會建構映像、建立或啟動容器。錯誤訊息與檢查方式請見 [操作與疑難排解](docs/operations.md)。
