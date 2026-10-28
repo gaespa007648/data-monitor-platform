@@ -2,8 +2,9 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from statistics import median
+from statistics import median, quantiles
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -53,6 +54,30 @@ def numeric_stats(rows, field):
         return None
     return {"最大值": max(values), "最小值": min(values),
             "平均值": sum(values) / len(values), "中位數": median(values)}
+
+
+def boxplot_summary(rows, field):
+    values = [Decimal(str(row[field])) for row in rows if row.get(field) is not None]
+    if not values:
+        return None
+    first, third = (quantiles(values, n=4, method="inclusive")[::2]
+                    if len(values) > 1 else (values[0], values[0]))
+    return {"最小值": min(values), "第一四分位數": first, "中位數": median(values),
+            "第三四分位數": third, "最大值": max(values),
+            "平均值": sum(values) / len(values)}
+
+
+def render_boxplot(summary, field):
+    data = pd.DataFrame([{"欄位": field, **{name: float(value) for name, value in summary.items()}}])
+    base = alt.Chart(data).encode(y=alt.Y("欄位:N", axis=None, title=None))
+    whisker = base.mark_rule(color="#64748b", strokeWidth=2).encode(
+        x=alt.X("最小值:Q", scale=alt.Scale(zero=False), title=field), x2="最大值:Q")
+    box = base.mark_bar(color="#4c78a8", size=38).encode(
+        x="第一四分位數:Q", x2="第三四分位數:Q")
+    middle = base.mark_tick(color="white", thickness=3, size=38).encode(x="中位數:Q")
+    average = base.mark_point(shape="diamond", filled=True, color="#e45756", size=140).encode(x="平均值:Q")
+    st.altair_chart((whisker + box + middle + average).properties(height=110), use_container_width=True)
+    st.caption("鬚線：最小／最大值；箱體：第一／第三四分位數；白線：中位數；紅色菱形：平均值。")
 
 
 def histogram(rows, field, bins=10):
@@ -164,14 +189,16 @@ def render_statistics(dataset, rows):
     kind = fields[selected]
     numeric_fields = [name for name, dtype in fields.items() if dtype in NUMERIC]
     if kind in NUMERIC:
-        stats = numeric_stats(rows, selected)
-        if stats is None:
+        summary = boxplot_summary(rows, selected)
+        if summary is None:
             st.info("篩選後沒有可分析的數值。")
             return
         st.markdown("**數值分布（Histogram）**")
         st.bar_chart(pd.DataFrame(histogram(rows, selected)).set_index("區間"))
-        st.markdown("**最大值、最小值、平均值與中位數**")
-        st.bar_chart(pd.DataFrame({"統計值": {name: float(value) for name, value in stats.items()}}))
+        st.markdown("**箱型圖（最小值、最大值、平均值與中位數）**")
+        render_boxplot(summary, selected)
+        for column, name in zip(st.columns(4), ("最小值", "最大值", "平均值", "中位數")):
+            column.metric(name, str(summary[name]))
     elif kind in CATEGORICAL:
         target = st.selectbox("群組計算目標欄位", numeric_fields, index=None,
                               placeholder="選擇數值欄位", key=f"analysis_group_target_{dataset['id']}")

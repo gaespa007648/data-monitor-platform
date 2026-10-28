@@ -18,7 +18,8 @@ import httpx
 from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path.cwd()))
-from analysis_ui import apply_filters, category_stats, histogram, load_records, numeric_stats, trend_points
+from analysis_ui import (apply_filters, boxplot_summary, category_stats, histogram,
+                         load_records, numeric_stats, trend_points)
 
 with urlopen("https://raw.githubusercontent.com/vega/vega-datasets/main/data/stocks.csv", timeout=20) as response:
     stocks = list(csv.DictReader(io.StringIO(response.read().decode("utf-8"))))
@@ -74,6 +75,10 @@ with httpx.Client(base_url=base, timeout=60) as client:
     assert microsoft and all(row["symbol"] == "MSFT" for row in microsoft)
     assert len(histogram(microsoft, "price")) == 10
     assert len(numeric_stats(microsoft, "price")) == 4
+    simple = boxplot_summary([{"value": value} for value in [1, 2, 3, 4, 5]], "value")
+    assert simple == {"最小值": 1, "第一四分位數": 2, "中位數": 3,
+                      "第三四分位數": 4, "最大值": 5, "平均值": 3}
+    assert boxplot_summary([{"value": 7}], "value")["中位數"] == 7
     assert sum(group["數量"] for group in category_stats(rows, "symbol", "price")) == 560
     points = trend_points(microsoft, "date", "price")
     assert points and points == sorted(points, key=lambda row: row["時間"])
@@ -96,11 +101,18 @@ with httpx.Client(base_url=base, timeout=60) as client:
     assert not app.exception, app.exception
     assert any("都必須填寫" in item.value for item in app.error)
 
-    with patch("dataset_ui.render_table", return_value=None), patch("analysis_ui.st.bar_chart") as bars:
+    with (patch("dataset_ui.render_table", return_value=None),
+          patch("analysis_ui.st.bar_chart") as bars,
+          patch("analysis_ui.st.altair_chart") as box):
         app.date_input[1].set_value(max(datetime.fromisoformat(row["date"]).date() for row in rows)).run()
         next(element for element in app.selectbox if element.label == "分析欄位").set_value("price").run()
     assert not app.exception, app.exception
-    assert bars.call_count >= 2
+    assert bars.called and box.called
+    assert len(box.call_args.args[0].to_dict()["layer"]) == 4
+    assert {item.label for item in app.metric} == {"最小值", "最大值", "平均值", "中位數"}
+    with patch("dataset_ui.render_table", return_value=None):
+        app.run()
+    assert not app.exception, app.exception
     with patch("dataset_ui.render_table", return_value=None), patch("analysis_ui.st.bar_chart") as bars:
         next(element for element in app.selectbox if element.label == "分析欄位").set_value("symbol").run()
         next(element for element in app.selectbox if element.label == "群組計算目標欄位").set_value("price").run()
