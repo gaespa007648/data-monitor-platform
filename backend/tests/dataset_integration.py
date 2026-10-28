@@ -215,6 +215,59 @@ class DatasetTests(unittest.TestCase):
             token=token, expected=201)
         self.assertTrue(appended["fields"][-1]["unique"])
 
+    def test_09_global_sort_delete_permissions_and_unique_release(self):
+        token = self.tokens[self.names[0]]
+        ds = call("/api/v1/datasets", "POST", {"name": "analysis_"+uuid4().hex[:8],
+            "fields": [{"name": "id", "data_type": "integer", "unique": True},
+                       {"name": "score", "data_type": "decimal"}]},
+            token=token, expected=201)
+        path = f"/api/v1/datasets/{ds['id']}"
+        content = json.dumps([{"id": index, "score": float(26 - index)}
+                              for index in range(1, 26)]).encode()
+        call(path+"/imports?schema_version=1", "POST",
+             file=("scores.json", content), token=token, expected=201)
+        first = call(path+"/records?sort_by=score&sort_dir=asc&page=1", token=token)
+        second = call(path+"/records?sort_by=score&sort_dir=asc&page=2", token=token)
+        self.assertEqual(len(first["items"]), 20)
+        self.assertEqual([r["data"]["id"] for r in first["items"][:3]], [25, 24, 23])
+        self.assertEqual([r["data"]["id"] for r in second["items"]], [5, 4, 3, 2, 1])
+        descending = call(path+"/records?sort_by=score&sort_dir=desc", token=token)
+        self.assertEqual([r["data"]["id"] for r in descending["items"][:3]], [1, 2, 3])
+        call(path+"/records?sort_by=unknown", token=token, expected=422)
+        call(path+"/records?sort_by=score&sort_dir=sideways", token=token, expected=422)
+        by_id = call(path+"/records?sort_by=id&sort_dir=desc", token=token)
+        self.assertEqual([r["data"]["id"] for r in by_id["items"][:3]], [25, 24, 23])
+        metadata = call(path+"/records?sort_by=__record_id&sort_dir=desc", token=token)
+        self.assertEqual(metadata["items"][0]["id"],
+                         max(r["id"] for r in [*first["items"], *second["items"]]))
+        victim = descending["items"][0]["id"]
+        call(path+f"/records/{victim}", "DELETE", token=self.tokens[self.names[1]], expected=403)
+        call(path+f"/records/{victim}", "DELETE", token=self.tokens["viewer"], expected=403)
+        call(path+f"/records/{victim}", "DELETE", token=token, expected=204)
+        self.assertEqual(call(path+"/records", token=token)["total"], 24)
+        call(path+"/records", "POST", {"schema_version": 1, "data": {"id": 1, "score": 1}},
+             token=token, expected=201)
+        self.assertEqual(call(path+"/records", token=token)["total"], 25)
+
+    def test_10_sort_missing_values_last_and_admin_delete(self):
+        token = self.tokens[self.names[0]]
+        ds = call("/api/v1/datasets", "POST", {"name": "sort_optional_"+uuid4().hex[:8],
+            "fields": [{"name": "label", "data_type": "string"},
+                       {"name": "score", "data_type": "decimal",
+                        "required": False, "nullable": True}]},
+            token=token, expected=201)
+        path = f"/api/v1/datasets/{ds['id']}/records"
+        for data in [{"label": "z", "score": 10}, {"label": "missing"},
+                     {"label": "a", "score": 2}, {"label": "null", "score": None}]:
+            call(path, "POST", {"schema_version": 1, "data": data}, token=token, expected=201)
+        for direction, expected in [("asc", ["a", "z", "missing", "null"]),
+                                    ("desc", ["z", "a", "missing", "null"])]:
+            rows = call(path+f"?sort_by=score&sort_dir={direction}", token=token)["items"]
+            self.assertEqual([row["data"]["label"] for row in rows], expected)
+        victim = call(path+"?sort_by=label&sort_dir=asc", token=token)["items"][0]["id"]
+        call(path+f"/{victim}", "DELETE", token=self.tokens["admin"], expected=204)
+        self.assertEqual(call(path, token=token)["total"], 3)
+
     def test_04_concurrent_append_and_import_schema_conflict(self):
         ds = self.create()
         token = self.tokens[self.names[0]]

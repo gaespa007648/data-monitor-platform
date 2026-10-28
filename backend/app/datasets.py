@@ -3,11 +3,12 @@ import json
 from datetime import timezone
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Response, UploadFile
 from pydantic import Field, ValidationError, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import case, cast, func, select
+from sqlalchemy.dialects.mysql import DECIMAL
 
 from app.dataset_rules import DatasetDefinition, DatasetField, decode_payload, unique_value_hash, validate_rows
 from app.dependencies import CurrentUser, Session, require_owner, require_writer
@@ -200,15 +201,67 @@ async def create_record(dataset_id: int, data: ManualRecord, request: Request, s
 
 @router.get("/{dataset_id}/records")
 async def list_records(dataset_id: int, session: Session, user: CurrentUser,
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=20)):
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=20),
+    sort_by: str | None = None, sort_dir: Literal["asc", "desc"] = "asc"):
     dataset = await find_dataset(session, dataset_id, user)
+    _, definition = await schema_at(session, dataset)
     total = await session.scalar(select(func.count(DatasetRecord.id)).where(DatasetRecord.dataset_id == dataset_id))
+    order = [DatasetRecord.id.asc()]
+    if sort_by:
+        order = []
+        if sort_by == "__record_id":
+            sort_column = DatasetRecord.id
+        elif sort_by == "__schema_version":
+            sort_column = DatasetSchemaVersion.number
+        else:
+            field = next((field for field in definition.fields if field.name == sort_by), None)
+            if field is None:
+                raise HTTPException(422, "Unknown dataset sort field")
+            path = '$.' + json.dumps(sort_by, ensure_ascii=False)
+            kind = func.json_unquote(func.json_extract(DatasetRecord.payload, path + '."kind"'))
+            value = func.json_unquote(func.json_extract(DatasetRecord.payload, path + '."value"'))
+            null_last = case((kind.is_(None), 1), (kind == "null", 1), else_=0)
+            order = [null_last.asc()]
+            if field.data_type in {"integer", "decimal"}:
+                sort_column = case((null_last == 1, None),
+                                   else_=cast(value, DECIMAL(50, 12)))
+            elif field.data_type is None:
+                rank = case((kind.in_(["integer", "decimal"]), 0), (kind == "boolean", 1),
+                            (kind == "datetime", 2), (kind == "string", 3), else_=4)
+                order.append(rank.asc() if sort_dir == "asc" else rank.desc())
+                numeric = case((null_last == 1, None),
+                               else_=cast(value, DECIMAL(50, 12)))
+                order.append(numeric.asc() if sort_dir == "asc" else numeric.desc())
+                sort_column = case((null_last == 1, None), else_=value)
+            else:
+                sort_column = case((null_last == 1, None), else_=value)
+        order.append(sort_column.asc() if sort_dir == "asc" else sort_column.desc())
+        order.append(DatasetRecord.id.asc())
     rows = (await session.execute(select(DatasetRecord, DatasetSchemaVersion.number)
         .join(DatasetSchemaVersion, DatasetRecord.schema_version_id == DatasetSchemaVersion.id)
-        .where(DatasetRecord.dataset_id == dataset_id).order_by(DatasetRecord.id)
+        .where(DatasetRecord.dataset_id == dataset_id).order_by(*order)
         .offset((page - 1) * page_size).limit(page_size))).all()
     return {"items": [record_output(record, number) for record, number in rows], "total": total,
         "page": page, "page_size": page_size, "dataset": await dataset_output(session, dataset, user)}
+
+
+@router.delete("/{dataset_id}/records/{record_id}", status_code=204)
+async def delete_record(dataset_id: int, record_id: int, session: Session, user: CurrentUser):
+    dataset = await find_dataset(session, dataset_id, user, write=True)
+    record = await session.scalar(select(DatasetRecord).where(
+        DatasetRecord.id == record_id, DatasetRecord.dataset_id == dataset.id).with_for_update())
+    if record is None:
+        raise HTTPException(404, "Dataset record not found")
+    require_owner(user, record.owner_id)
+    unique_values = (await session.scalars(select(DatasetUniqueValue).where(
+        DatasetUniqueValue.record_id == record_id))).all()
+    for value in unique_values:
+        await session.delete(value)
+    await session.flush()
+    await session.delete(record)
+    audit(session, user, "dataset.record.delete", record_id)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{dataset_id}/imports", status_code=201)

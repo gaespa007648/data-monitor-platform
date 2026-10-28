@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 import httpx
 import streamlit as st
 
+from analysis_table import render_table
+
 
 def preview_rows(content, kind, skip_first_row, fields):
     """Show at most five uploaded records; validation still uses the full file."""
@@ -202,17 +204,54 @@ def render_import_page(request, show_error):
 
 def render_analysis_page(request, show_error):
     st.subheader("資料分析")
-    st.caption("目前提供數據集資料的分頁檢視，每頁最多 20 筆，不提供篩選條件。")
+    st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 20 筆。")
     try:
-        dataset = choose_dataset(request, "analysis_dataset")
+        dataset = choose_dataset(request, "analysis_dataset", show_page=False)
         if dataset is None:
             return
-        page = st.number_input("資料頁碼", min_value=1, step=1, key=f"analysis_page_{dataset['id']}")
-        result = request("GET", f"/api/v1/datasets/{dataset['id']}/records", params={"page": page, "page_size": 20})
-        fields = [field["name"] for field in result["dataset"]["fields"]]
-        rows = [{"__record_id": row["id"], "__schema_version": row["schema_version"],
-                 **{name: row["data"].get(name) for name in fields}} for row in result["items"]]
+        sort_key = f"analysis_sort_{dataset['id']}"
+        sort = st.session_state.get(sort_key, {"column": None, "direction": "asc"})
+        page = st.number_input("資料頁碼", min_value=1, step=1,
+            key=f"analysis_page_{dataset['id']}_{sort['column']}_{sort['direction']}")
+        params = {"page": page, "page_size": 20}
+        if sort["column"]:
+            params.update(sort_by=sort["column"], sort_dir=sort["direction"])
+        result = request("GET", f"/api/v1/datasets/{dataset['id']}/records", params=params)
+        columns = ["__record_id", "__schema_version",
+                   *[field["name"] for field in result["dataset"]["fields"]]]
+        rows = [{"record_id": row["id"],
+                 "can_delete": dataset["can_write"] and (
+                     st.session_state["user"]["role"] == "admin"
+                     or row["owner_id"] == st.session_state["user"]["id"]),
+                 "data": {"__record_id": row["id"], "__schema_version": row["schema_version"],
+                          **{name: row["data"].get(name) for name in columns[2:]}}}
+                for row in result["items"]]
         st.caption(f"共 {result['total']} 筆，第 {page} 頁／共 {max(1, (result['total'] + 19) // 20)} 頁。新增欄位未回填舊資料，空白可能代表缺值或 null。")
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        if st.session_state.pop(f"analysis_deleted_{dataset['id']}", False):
+            st.success("資料列已刪除。")
+        event = render_table(dataset["id"], columns, rows, sort["column"], sort["direction"])
+        if isinstance(event, str):
+            try:
+                event = json.loads(event)
+            except ValueError:
+                event = None
+        if not isinstance(event, dict) or event.get("dataset_id") != dataset["id"]:
+            return
+        event_id = event.get("event_id")
+        last_key = f"analysis_event_{dataset['id']}"
+        if not isinstance(event_id, str) or event_id == st.session_state.get(last_key):
+            return
+        st.session_state[last_key] = event_id
+        if event.get("action") == "sort" and event.get("column") in columns:
+            column = event["column"]
+            direction = "desc" if sort["column"] == column and sort["direction"] == "asc" else "asc"
+            st.session_state[sort_key] = {"column": column, "direction": direction}
+            st.rerun()
+        if event.get("action") == "delete" and type(event.get("record_id")) is int:
+            record_id = event["record_id"]
+            if any(row["record_id"] == record_id and row["can_delete"] for row in rows):
+                request("DELETE", f"/api/v1/datasets/{dataset['id']}/records/{record_id}")
+                st.session_state[f"analysis_deleted_{dataset['id']}"] = True
+                st.rerun()
     except httpx.HTTPError as exc:
         show_error(exc)

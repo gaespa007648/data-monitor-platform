@@ -134,10 +134,28 @@ with httpx.Client(base_url=base, timeout=30) as client:
         assert not app.exception and app.session_state["dataset_import_done"]
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 3
 
-    app = page("analysis_page")
-    widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
+    with patch("dataset_ui.render_table", return_value=None):
+        app = page("analysis_page")
+        widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
     assert widget(app, "number_input", "資料頁碼")
-    assert not any(element.label == "篩選條件" for element in app.selectbox)
+    assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
+    with patch("dataset_ui.render_table", return_value={
+            "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
+        app.run()
+    assert not app.exception
+    assert app.session_state[f"analysis_sort_{dataset_id}"] == {
+        "column": "sepal_length", "direction": "asc"}
+    with patch("dataset_ui.render_table", return_value={
+            "event_id": "sort-desc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
+        app.run()
+    assert not app.exception
+    assert app.session_state[f"analysis_sort_{dataset_id}"]["direction"] == "desc"
+    victim = client.get(f"/api/v1/datasets/{dataset_id}/records").json()["items"][0]["id"]
+    with patch("dataset_ui.render_table", return_value={
+            "event_id": "delete-one", "action": "delete", "dataset_id": dataset_id, "record_id": victim}):
+        app.run()
+    assert not app.exception
+    assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 2
 
-print("PASS: dataset create, append-only fields, manual write, CSV header option, analysis page")
+print("PASS: dataset create, import, analysis sorting and row deletion")
