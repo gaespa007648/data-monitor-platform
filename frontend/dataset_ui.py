@@ -86,22 +86,32 @@ def show_schema(dataset):
                  use_container_width=True, hide_index=True)
 
 
-def render_dataset_page(request, show_error):
+def render_dataset_page(request, show_error, navigate_to_manage=None):
     st.subheader("建立數據集 Dataset")
     st.caption("每個數據集可自訂 1–100 個欄位；建立後只能新增欄位。")
     user = st.session_state["user"]
-    modes = ["建立數據集", "管理數據集"] if user["role"] in {"admin", "user"} else ["管理數據集"]
-    mode = st.radio("數據集操作", modes)
+    mode = st.radio("數據集操作", ["建立數據集", "編輯數據集"],
+                    index=0 if user["role"] in {"admin", "user"} else 1)
     try:
         if mode == "建立數據集":
+            if user["role"] not in {"admin", "user"}:
+                st.warning("無權限建立數據集。")
+                return
             name = st.text_input("數據集名稱", max_chars=100)
             description = st.text_input("說明", max_chars=500)
             st.info("可在欄位表新增或刪除尚未儲存的欄位；data_type 可選未指定。提交前請確認欄位已完成編輯。")
             fields = field_editor("new_dataset_fields")
             if st.button("建立數據集"):
+                st.session_state.pop("dataset_created", None)
                 result = request("POST", "/api/v1/datasets", json={"name": name, "description": description, "fields": fields})
-                st.success(f"數據集 {result['name']} 已建立（#{result['id']}），可前往建立資料或批次匯入。")
+                st.session_state["dataset_created"] = {"id": result["id"], "name": result["name"]}
+            created = st.session_state.get("dataset_created")
+            if created:
+                st.success(f"數據集「{created['name']}」建置完成（#{created['id']}）。")
+                if st.button("前往管理數據集查看", disabled=navigate_to_manage is None):
+                    navigate_to_manage(created["id"])
             return
+        st.session_state.pop("dataset_created", None)
         dataset = choose_dataset(request, "manage_dataset")
         if dataset is None:
             return

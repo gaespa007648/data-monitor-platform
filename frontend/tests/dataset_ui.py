@@ -13,6 +13,20 @@ from streamlit.testing.v1 import AppTest
 sys.path.insert(0, str(Path.cwd()))
 from dataset_ui import preview_rows
 
+viewer = AppTest.from_string('''
+import streamlit as st
+from dataset_ui import render_dataset_page
+st.session_state["user"] = {"role": "viewer"}
+def request(*args, **kwargs):
+    return {"items": [], "total": 0}
+render_dataset_page(request, lambda exc: st.error(str(exc)))
+''').run()
+assert not viewer.exception
+assert viewer.radio[0].options == ["建立數據集", "編輯數據集"]
+assert viewer.radio[0].value == "編輯數據集"
+viewer.radio[0].set_value("建立數據集").run()
+assert viewer.warning and "無權限建立數據集" in viewer.warning[0].value
+
 many_csv = b"name,value\n" + b"".join(f"row{i},{i}\n".encode() for i in range(12))
 assert len(preview_rows(many_csv, "csv", True, [{"name": "name"}, {"name": "value"}])) == 5
 assert preview_rows(many_csv, "csv", True, [{"name": "name"}, {"name": "value"}])[0]["name"] == "row0"
@@ -81,8 +95,14 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert len(dataset["fields"]) == 5
     assert dataset["fields"][0]["remark"] == "花萼長度"
     dataset_id = dataset["id"]
+    assert "建置完成" in app.success[0].value
+    with patch("streamlit.switch_page") as switch:
+        widget(app, "button", "前往管理數據集查看").click().run()
+    assert not app.exception
+    assert app.session_state["manage_records_dataset"] == dataset_id
+    assert switch.call_args.args[0].title == "管理數據集"
 
-    widget(app, "radio", "數據集操作").set_value("管理數據集")
+    widget(app, "radio", "數據集操作").set_value("編輯數據集")
     with patch("streamlit.data_editor", return_value=[{"name": "notes", "remark": "觀察註記", "data_type": "未指定", "required": False, "nullable": True, "unique": True}]):
         app.run()
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()

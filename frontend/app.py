@@ -96,11 +96,16 @@ def users_page():
 
 
 def datasets_page():
-    render_dataset_page(request, show_error)
+    render_dataset_page(request, show_error, go_manage_dataset)
 
 
 def manage_page():
     render_manage_records_page(request, show_error)
+
+
+def go_manage_dataset(dataset_id):
+    st.session_state["manage_records_dataset"] = dataset_id
+    st.switch_page(MANAGE_DATASET_PAGE)
 
 
 def create_page():
@@ -117,6 +122,9 @@ def analysis_page():
 
 def monitor_page():
     render_monitor_page(request, show_error, API_BASE_URL, st.session_state["token"])
+
+
+MANAGE_DATASET_PAGE = st.Page(manage_page, title="管理數據集")
 
 
 if st.session_state.get("clear_browser_token"):
@@ -153,7 +161,7 @@ else:
     pages = [st.Page(overview_page, title="服務概況")]
     pages.append(st.Page(users_page, title="系統管理"))
     pages.append(st.Page(datasets_page, title="建立數據集"))
-    pages.append(st.Page(manage_page, title="管理數據集"))
+    pages.append(MANAGE_DATASET_PAGE)
     if user["role"] in {"admin", "user"}:
         pages += [st.Page(create_page, title="建立資料"), st.Page(import_page, title="批次匯入")]
     pages.append(st.Page(analysis_page, title="資料分析"))
