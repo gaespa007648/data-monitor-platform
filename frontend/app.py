@@ -74,7 +74,7 @@ def registration_page():
             return
         try:
             request("POST", "/api/v1/users", json={"username": username, "password": password})
-            st.success("註冊成功，請前往登入頁登入。")
+            st.switch_page(LOGIN_PAGE)
         except httpx.HTTPError as exc:
             show_error(exc)
 
@@ -135,6 +135,8 @@ def monitor_page():
 
 
 MANAGE_DATASET_PAGE = st.Page(manage_page, title="管理數據集")
+LOGIN_PAGE = st.Page(login_page, title="登入")
+REGISTRATION_PAGE = st.Page(registration_page, title="註冊")
 
 
 if st.session_state.get("clear_browser_token"):
@@ -153,7 +155,7 @@ elif "token" not in st.session_state:
             st.session_state["clear_browser_token"] = True
         st.rerun()
 if "token" not in st.session_state:
-    st.navigation([st.Page(login_page, title="登入"), st.Page(registration_page, title="註冊")]).run()
+    st.navigation([LOGIN_PAGE, REGISTRATION_PAGE]).run()
 else:
     browser_token("save", st.session_state["token"])
     try:
