@@ -2,7 +2,7 @@
 
 即時資料分析與監控系統，採 FastAPI 提供 API、MariaDB 持久化資料、Streamlit 提供互動介面。
 
-目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入與每頁 20 筆的資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
+目前提供使用者註冊、JWT 登入、Admin／User／Viewer 權限、自訂欄位的數據集、單筆資料建立、CSV／JSON 批次匯入與每頁 10 筆的前端資料檢視。既有固定四欄位資料 API 仍保留相容。系統元件與目前功能範圍請見 [系統架構](docs/architecture.md)。
 
 ## 技術棧
 
@@ -116,7 +116,7 @@ MariaDB 初始化帳密只在空資料目錄生效；修改 `.env` 中的 DB_PAS
 | GET／POST `/api/v1/datasets` | 數據集清單與建立 |
 | GET `/api/v1/datasets/{id}` | 數據集及目前 Schema |
 | POST `/api/v1/datasets/{id}/fields` | 只新增欄位，保留既有欄位 |
-| GET／POST `/api/v1/datasets/{id}/records` | 每頁最多 20 筆的排序檢視／單筆建立 |
+| GET／POST `/api/v1/datasets/{id}/records` | API 每頁最多 20 筆的排序檢視（Streamlit 固定 10 筆）／單筆建立 |
 | DELETE `/api/v1/datasets/{id}/records/{record_id}` | 建立者或 Admin 刪除數據集資料列 |
 | POST `/api/v1/datasets/{id}/imports` | CSV／JSON 預檢與冪等批次匯入；CSV 可設定是否跳過首列欄名 |
 | GET／POST `/api/v1/categories` | 查詢分類；僅 Admin 可建立分類 |

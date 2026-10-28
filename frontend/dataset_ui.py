@@ -204,19 +204,26 @@ def render_import_page(request, show_error):
 
 def render_analysis_page(request, show_error):
     st.subheader("資料分析")
-    st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 20 筆。")
+    st.caption("點欄名切換升冪／降冪；移到資料列上可刪除有權管理的資料。每頁最多 10 筆。")
     try:
         dataset = choose_dataset(request, "analysis_dataset", show_page=False)
         if dataset is None:
             return
+        st.subheader("資料檢視")
         sort_key = f"analysis_sort_{dataset['id']}"
         sort = st.session_state.get(sort_key, {"column": None, "direction": "asc"})
-        page = st.number_input("資料頁碼", min_value=1, step=1,
-            key=f"analysis_page_{dataset['id']}_{sort['column']}_{sort['direction']}")
-        params = {"page": page, "page_size": 20}
+        page_key = f"analysis_page_{dataset['id']}_{sort['column']}_{sort['direction']}"
+        page = int(st.session_state.get(page_key, 1))
+        params = {"page": page, "page_size": 10}
         if sort["column"]:
             params.update(sort_by=sort["column"], sort_dir=sort["direction"])
         result = request("GET", f"/api/v1/datasets/{dataset['id']}/records", params=params)
+        total_pages = max(1, (result["total"] + 9) // 10)
+        if page > total_pages:
+            page = total_pages
+            st.session_state[page_key] = page
+            params["page"] = page
+            result = request("GET", f"/api/v1/datasets/{dataset['id']}/records", params=params)
         columns = ["__record_id", "__schema_version",
                    *[field["name"] for field in result["dataset"]["fields"]]]
         rows = [{"record_id": row["id"],
@@ -226,10 +233,11 @@ def render_analysis_page(request, show_error):
                  "data": {"__record_id": row["id"], "__schema_version": row["schema_version"],
                           **{name: row["data"].get(name) for name in columns[2:]}}}
                 for row in result["items"]]
-        st.caption(f"共 {result['total']} 筆，第 {page} 頁／共 {max(1, (result['total'] + 19) // 20)} 頁。新增欄位未回填舊資料，空白可能代表缺值或 null。")
         if st.session_state.pop(f"analysis_deleted_{dataset['id']}", False):
             st.success("資料列已刪除。")
         event = render_table(dataset["id"], columns, rows, sort["column"], sort["direction"])
+        st.number_input("頁碼", min_value=1, max_value=total_pages, step=1, key=page_key)
+        st.caption(f"共 {result['total']} 筆，第 {page} 頁／共 {total_pages} 頁；每頁最多 10 筆。新增欄位未回填舊資料，空白可能代表缺值或 null。")
         if isinstance(event, str):
             try:
                 event = json.loads(event)

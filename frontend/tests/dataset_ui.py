@@ -138,7 +138,8 @@ with httpx.Client(base_url=base, timeout=30) as client:
         app = page("analysis_page")
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
     assert not app.exception
-    assert widget(app, "number_input", "資料頁碼")
+    assert widget(app, "number_input", "頁碼")
+    assert any(element.value == "資料檢視" for element in app.subheader)
     assert not any(element.label == "數據集清單頁碼" for element in app.number_input)
     with patch("dataset_ui.render_table", return_value={
             "event_id": "sort-asc", "action": "sort", "dataset_id": dataset_id, "column": "sepal_length"}):
@@ -158,4 +159,21 @@ with httpx.Client(base_url=base, timeout=30) as client:
     assert not app.exception
     assert client.get(f"/api/v1/datasets/{dataset_id}/records").json()["total"] == 2
 
-print("PASS: dataset create, import, analysis sorting and row deletion")
+    for index in range(9):
+        response = client.post(f"/api/v1/datasets/{dataset_id}/records", json={
+            "schema_version": 2,
+            "data": {"sepal_length": "5.1", "sepal_width": "3.5",
+                     "petal_length": "1.4", "petal_width": "0.2", "species": "setosa",
+                     "notes": f"pagination-{index}"}})
+        response.raise_for_status()
+    with patch("dataset_ui.render_table", return_value=None) as table:
+        app.run()
+    assert not app.exception
+    assert len(table.call_args.args[2]) == 10
+    assert widget(app, "number_input", "頁碼").max == 2
+    with patch("dataset_ui.render_table", return_value=None) as table:
+        widget(app, "number_input", "頁碼").set_value(2).run()
+    assert not app.exception
+    assert len(table.call_args.args[2]) == 1
+
+print("PASS: dataset create, import, analysis sorting, deletion and ten-row pagination")
