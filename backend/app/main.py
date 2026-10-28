@@ -22,6 +22,7 @@ from app.import_templates import router as schemas_router
 from app.datasets import router as datasets_router
 from app.monitors import router as monitors_router
 from app.generator import router as generator_router
+from app.system import router as system_router
 from app.request_limits import RequestBodyLimit
 
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +42,7 @@ app.include_router(schemas_router)
 app.include_router(datasets_router)
 app.include_router(monitors_router)
 app.include_router(generator_router)
+app.include_router(system_router)
 
 
 class LoginRequest(BaseModel):

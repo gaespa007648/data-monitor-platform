@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from app.dataset_rules import decode_payload
 from app.datasets import find_dataset, schema_at
 from app.dependencies import CurrentUser, Session, require_owner
-from app.models import Dataset, DatasetMonitor, DatasetMonitorAlert, DatasetRecord, utcnow
+from app.models import AuditLog, Dataset, DatasetMonitor, DatasetMonitorAlert, DatasetRecord, utcnow
 from app.schemas import StrictModel
 
 router = APIRouter(prefix="/api/v1/monitors", tags=["monitors"])
@@ -127,6 +127,8 @@ async def create_monitor(data: MonitorCreate, session: Session, user: CurrentUse
         interval_seconds=data.interval_seconds, rules=rules, active=data.activate,
         activated_at=utcnow() if data.activate else None)
     session.add(monitor)
+    await session.flush()
+    session.add(AuditLog(actor_id=user.id, action="monitor.create", resource_id=monitor.id))
     await session.commit()
     return monitor_output(monitor, dataset.name)
 
@@ -154,6 +156,7 @@ async def start_monitor(monitor_id: int, session: Session, user: CurrentUser):
             flag_modified(monitor, "rules")
         monitor.active = True
         monitor.activated_at = utcnow()
+        session.add(AuditLog(actor_id=user.id, action="monitor.start", resource_id=monitor.id))
         await session.commit()
     return monitor_output(monitor, dataset.name)
 
@@ -161,8 +164,10 @@ async def start_monitor(monitor_id: int, session: Session, user: CurrentUser):
 @router.post("/{monitor_id}/stop")
 async def stop_monitor(monitor_id: int, session: Session, user: CurrentUser):
     monitor, dataset = await monitor_for_user(session, monitor_id, user, write=True)
-    monitor.active = False
-    await session.commit()
+    if monitor.active:
+        monitor.active = False
+        session.add(AuditLog(actor_id=user.id, action="monitor.stop", resource_id=monitor.id))
+        await session.commit()
     return monitor_output(monitor, dataset.name)
 
 

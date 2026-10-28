@@ -13,6 +13,8 @@
 
 「系統管理」入口對所有登入者可見，非 Admin 進入後只會看到無權限訊息。後端 `GET /api/v1/users` 與 `PATCH /api/v1/users/{user_id}/role` 也各自檢查 Admin 權限；使用者列表 API 回傳總筆數與分頁資訊。角色限 admin、user、viewer，最後一位啟用中的 Admin 不可降權。
 
+Admin 可在列表下方查看 FastAPI／MariaDB 健康狀態、MariaDB 狀態變數與資料表大小，以及操作稽核紀錄。`GET /api/v1/system/database` 與 `GET /api/v1/system/audit-logs` 皆由後端再次檢查 Admin 權限。稽核紀錄包含已完成的註冊、角色異動、數據集／資料寫入與監控設定操作；不記錄純瀏覽與登入。監控指標來自 MariaDB 的 `information_schema`，不包含主機 CPU 使用率、程序記憶體或磁碟剩餘空間。資料庫狀態變數與 InnoDB 快取指標的定義見 [MariaDB 官方文件](https://mariadb.com/docs/server/server-management/variables-and-modes/server-status-variables)，常見儀表板亦會呈現連線、慢查詢與快取等指標，見 [Grafana MySQL 儀表板說明](https://grafana.com/docs/learning-paths/mysql-integration/understand-dashboards/)。
+
 登入每來源 IP 每分鐘最多 30 次，註冊最多 10 次；超過回傳 429。限流目前是單程序記憶體視窗，透過 Streamlit 操作的使用者共用伺服器來源 IP 額度。
 
 ## 數據集 Schema 與記錄

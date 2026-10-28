@@ -73,7 +73,7 @@ sequenceDiagram
 Streamlit 將登入資料交給 `POST /api/v1/auth/tokens`，FastAPI 驗證資料庫密碼雜湊後發出有效期 60 分鐘的 HS256 JWT。後續請求使用 Bearer token，後端驗證簽章、期限、issuer、audience，並重新確認帳號存在且啟用。
 
 - 公開註冊固定建立 user，不能指定角色。
-- admin 可管理全部數據集與資料、建立分類，並在系統管理頁檢視使用者及修改角色。
+- admin 可管理全部數據集與資料、建立分類，並在系統管理頁檢視使用者、修改角色、查看健康與資料庫指標，以及查閱操作稽核紀錄。
 - user 可建立自己的數據集、附加其欄位及寫入資料；既有固定欄位記錄仍只能修改／刪除自己建立的記錄。
 - viewer 僅可讀取共享資料與自身資訊，無寫入或管理權限。
 - Streamlit 以 Session State 保存目前連線的登入狀態，並將 JWT 存入瀏覽器 localStorage。重新連線時向後端驗證取回的 JWT；登出或驗證失敗時清除前端及瀏覽器儲存的權杖。

@@ -46,6 +46,20 @@ def request(method, path, **kwargs):
     if method == "PATCH":
         st.session_state["last_update"] = (path, kwargs["json"])
         return {"id": 1, "role": kwargs["json"]["role"]}
+    if path == "/health/live":
+        return {"status": "ok"}
+    if path == "/health/ready":
+        return {"database": "connected"}
+    if path == "/api/v1/system/database":
+        return {"connections": 2, "max_connections": 100, "running_queries": 1,
+                "slow_queries_total": 0, "buffer_pool_hit_ratio": .99,
+                "cpu_seconds_total": 15.5, "buffer_pool_used_bytes": 1024,
+                "data_bytes": 4096, "index_bytes": 1024, "buffer_pool_size_bytes": 8192,
+                "peak_connections": 3, "uptime_seconds": 120}
+    if path == "/api/v1/system/audit-logs":
+        return {"items": [{"created_at": "2026-10-28T00:00:00Z", "username": "admin",
+                           "action": "dataset.create", "resource_id": 1, "details": ""}],
+                "total": 1, "page": 1, "page_size": 20}
     page = kwargs["params"]["page"]
     items = [{"id": i, "username": f"member{i}", "role": "user", "is_active": True}
              for i in range((page - 1) * 20 + 1, min(page * 20, 25) + 1)]
@@ -58,6 +72,8 @@ admin = AppTest.from_string(admin_source).run()
 assert not admin.exception
 assert admin.subheader[0].value == "系統管理"
 assert admin.markdown[0].value == "### 使用者列表"
+assert [item.value for item in admin.markdown if item.value.startswith("### ")] == [
+    "### 使用者列表", "### 系統狀態監控", "### 資料庫狀態監控", "### 系統日誌"]
 assert len(admin.dataframe[0].value) == 20
 assert not admin.number_input
 assert [button.label for button in admin.button if button.label in {"‹", "1", "2", "›"}] == ["‹", "1", "2", "›"]

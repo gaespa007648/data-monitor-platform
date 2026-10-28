@@ -19,6 +19,8 @@ def main():
             "username": "admin", "password": admin_password}).json()["access_token"]
         client.headers["Authorization"] = f"Bearer {user_token}"
         assert client.get("/api/v1/users").status_code == 403
+        assert client.get("/api/v1/system/database").status_code == 403
+        assert client.get("/api/v1/system/audit-logs").status_code == 403
         assert client.patch(f"/api/v1/users/{target_id}/role", json={"role": "admin"}).status_code == 403
         client.headers["Authorization"] = f"Bearer {admin_token}"
         page = client.get("/api/v1/users", params={"page": 1, "page_size": 1})
@@ -26,6 +28,17 @@ def main():
         result = page.json()
         assert result["page"] == 1 and result["page_size"] == 1
         assert result["total"] >= 2 and len(result["items"]) == 1
+        metrics = client.get("/api/v1/system/database")
+        metrics.raise_for_status()
+        assert metrics.json()["max_connections"] > 0
+        assert metrics.json()["data_bytes"] >= 0
+        assert metrics.json()["buffer_pool_size_bytes"] > 0
+        audit = client.get("/api/v1/system/audit-logs", params={"page": 1, "page_size": 20})
+        audit.raise_for_status()
+        assert audit.json()["total"] >= 1
+        assert any(item["username"] == username and item["action"] == "user.register"
+                   for item in audit.json()["items"])
+        assert client.get("/api/v1/system/audit-logs", params={"page": 0}).status_code == 422
         assert client.patch(f"/api/v1/users/{target_id}/role", json={"role": "invalid"}).status_code == 422
         assert client.patch("/api/v1/users/999999999/role", json={"role": "viewer"}).status_code == 404
         updated = client.patch(f"/api/v1/users/{target_id}/role", json={"role": "admin"})
@@ -38,6 +51,8 @@ def main():
         updated.raise_for_status()
         assert updated.json()["role"] == "viewer"
         assert client.get("/api/v1/users").status_code == 403
+        assert client.get("/api/v1/system/database").status_code == 403
+        assert client.get("/api/v1/system/audit-logs").status_code == 403
     print(f"System management API passed; clean fixture {username}")
 
 
