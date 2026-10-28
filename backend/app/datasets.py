@@ -9,10 +9,11 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Uplo
 from pydantic import Field, ValidationError, model_validator
 from sqlalchemy import func, select
 
-from app.dataset_rules import DatasetDefinition, DatasetField, decode_payload, validate_rows
+from app.dataset_rules import DatasetDefinition, DatasetField, decode_payload, unique_value_hash, validate_rows
 from app.dependencies import CurrentUser, Session, require_owner, require_writer
 from app.import_rules import no_duplicates, parse_source
-from app.models import (AuditLog, Dataset, DatasetImportBatch, DatasetRecord, DatasetSchemaVersion, User)
+from app.models import (AuditLog, Dataset, DatasetImportBatch, DatasetRecord,
+                        DatasetSchemaVersion, DatasetUniqueValue, User)
 from app.schemas import StrictModel
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["datasets"])
@@ -141,6 +142,36 @@ def record_output(record, number):
         "value_types": {key: value["kind"] for key, value in record.payload.items()}}
 
 
+async def check_unique_values(session, dataset_id, definition, payloads):
+    claims = []
+    seen = set()
+    duplicate_rows = []
+    for row_number, payload in enumerate(payloads, 1):
+        for field in definition.fields:
+            if not field.unique or field.name not in payload or payload[field.name]["kind"] == "null":
+                continue
+            value_hash = unique_value_hash(payload[field.name])
+            key = (field.name, value_hash)
+            if key in seen:
+                duplicate_rows.append({"row": row_number, "field": field.name,
+                                       "message": "Duplicate unique value in this request"})
+            seen.add(key)
+            claims.append((row_number, field.name, value_hash))
+    if duplicate_rows:
+        raise HTTPException(422, {"message": "No rows saved", "duplicates": duplicate_rows[:50]})
+    for field_name in {name for _, name, _ in claims}:
+        hashes = list({value_hash for _, name, value_hash in claims if name == field_name})
+        for start in range(0, len(hashes), 500):
+            existing = (await session.scalars(select(DatasetUniqueValue.value_hash).where(
+                DatasetUniqueValue.dataset_id == dataset_id,
+                DatasetUniqueValue.field_name == field_name,
+                DatasetUniqueValue.value_hash.in_(hashes[start:start + 500])))).all()
+            if existing:
+                raise HTTPException(409, {"field": field_name,
+                    "message": "Unique value already exists in this dataset"})
+    return claims
+
+
 @router.post("/{dataset_id}/records", status_code=201)
 async def create_record(dataset_id: int, data: ManualRecord, request: Request, session: Session, user: CurrentUser):
     dataset = await find_dataset(session, dataset_id, user, write=True)
@@ -155,10 +186,13 @@ async def create_record(dataset_id: int, data: ManualRecord, request: Request, s
     except (ValueError, ValidationError, InvalidOperation, RecursionError):
         raise HTTPException(422, "Invalid record JSON") from None
     payload = validate_rows([parsed.data], definition, "manual")[0]
+    claims = await check_unique_values(session, dataset.id, definition, [payload])
     record = DatasetRecord(dataset_id=dataset.id, schema_version_id=version.id, owner_id=user.id,
                            payload=payload, source="manual")
     session.add(record)
     await session.flush()
+    session.add_all([DatasetUniqueValue(dataset_id=dataset.id, record_id=record.id,
+        field_name=name, value_hash=value_hash) for _, name, value_hash in claims])
     audit(session, user, "dataset.record.create", record.id)
     await session.commit()
     return record_output(record, version.number)
@@ -210,6 +244,7 @@ async def import_records(dataset_id: int, session: Session, user: CurrentUser,
         csv_fieldnames=[field.name for field in definition.fields],
         skip_first_row=skip_first_row if kind == "csv" else True)
     payloads = validate_rows(rows, definition, kind)
+    claims = await check_unique_values(session, dataset.id, definition, payloads)
     if preview:
         return {"preview": True, "row_count": len(rows), "schema_version": version.number,
                 "fingerprint": fingerprint, "normalized_sample": [decode_payload(p) for p in payloads[:5]]}
@@ -217,8 +252,12 @@ async def import_records(dataset_id: int, session: Session, user: CurrentUser,
         idempotency_key=idempotency_key, fingerprint=fingerprint, row_count=len(rows), schema_snapshot=version.definition)
     session.add(batch)
     await session.flush()
-    session.add_all([DatasetRecord(dataset_id=dataset.id, schema_version_id=version.id, owner_id=user.id,
-        import_batch_id=batch.id, payload=payload, source="import") for payload in payloads])
+    records = [DatasetRecord(dataset_id=dataset.id, schema_version_id=version.id, owner_id=user.id,
+        import_batch_id=batch.id, payload=payload, source="import") for payload in payloads]
+    session.add_all(records)
+    await session.flush()
+    session.add_all([DatasetUniqueValue(dataset_id=dataset.id, record_id=records[index - 1].id,
+        field_name=name, value_hash=value_hash) for index, name, value_hash in claims])
     audit(session, user, "dataset.import", batch.id)
     await session.commit()
     return {"preview": False, "batch_id": batch.id, "row_count": len(rows), "schema_version": version.number, "replayed": False}

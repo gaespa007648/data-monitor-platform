@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.dataset_rules import DatasetDefinition, decode_payload, validate_rows
+from app.dataset_rules import DatasetDefinition, decode_payload, unique_value_hash, validate_rows
 
 
 class DatasetRulesTests(unittest.TestCase):
@@ -68,8 +68,25 @@ class DatasetRulesTests(unittest.TestCase):
         definition = DatasetDefinition.model_validate(legacy)
         self.assertEqual(definition.fields[0].remark, "")
         self.assertEqual(definition.digest(), old_hash)
+        self.assertFalse(definition.fields[0].unique)
         documented = DatasetDefinition(fields=[{**legacy["fields"][0], "remark": "鳶尾花品種"}])
         self.assertEqual(documented.fields[0].remark, "鳶尾花品種")
         self.assertNotEqual(documented.digest(), old_hash)
         with self.assertRaises(ValidationError):
             DatasetDefinition(fields=[{"name": "x", "remark": "x" * 501}])
+
+    def test_unique_flag_and_canonical_values(self):
+        original = DatasetDefinition(fields=[{"name": "id", "data_type": "integer"}])
+        enabled = DatasetDefinition(fields=[{"name": "id", "data_type": "integer", "unique": True}])
+        self.assertNotEqual(original.digest(), enabled.digest())
+        self.assertFalse(original.fields[0].unique)
+        self.assertTrue(enabled.fields[0].unique)
+        with self.assertRaises(ValidationError):
+            DatasetDefinition(fields=[{"name": "id", "unique": "true"}])
+        self.assertEqual(unique_value_hash({"kind": "integer", "value": "1"}),
+                         unique_value_hash({"kind": "decimal", "value": "1.00"}))
+        self.assertNotEqual(unique_value_hash({"kind": "string", "value": "1"}),
+                            unique_value_hash({"kind": "integer", "value": "1"}))
+        self.assertNotEqual(
+            unique_value_hash({"kind": "decimal", "value": "12345678901234567890123456789012345678"}),
+            unique_value_hash({"kind": "decimal", "value": "12345678901234567890123456789012345679"}))

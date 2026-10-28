@@ -16,7 +16,7 @@
 
 遷移設定在 backend/alembic.ini，環境與版本檔在 backend/migrations。Alembic 透過 asyncmy 建立非同步連線，並以 run_sync 執行遷移操作；目前只支援線上遷移，不輸出離線 SQL 腳本。
 
-Compose 啟動順序為 **db healthy → migrate 成功 → api 啟動**。一次性的 migrate 服務先執行相當於 `alembic upgrade head` 的升版，再補齊預設分類、內建匯入範本及執行選用的測試帳號初始化；全部成功才以結束碼 0 結束。API 不自行 create_all，也不由每個 API 程序各跑一次遷移。目前遷移鏈含數據集、不可覆寫的 Schema 版本、動態資料記錄及匯入批次資料表。
+Compose 啟動順序為 **db healthy → migrate 成功 → api 啟動**。一次性的 migrate 服務先執行相當於 `alembic upgrade head` 的升版，再補齊預設分類、內建匯入範本及執行選用的測試帳號初始化；全部成功才以結束碼 0 結束。API 不自行 create_all，也不由每個 API 程序各跑一次遷移。目前遷移鏈含數據集、不可覆寫的 Schema 版本、動態資料記錄、匯入批次及 unique 值索引資料表。
 
 schema 調整時，應新增遷移版本、檢查操作內容後再套用；自動產生的遷移仍須人工確認，尤其是欄位改名與資料轉換。已分享或套用的歷史版本應保留，後續變更以新版本表達。應用資料讀寫使用 ORM，schema 變更使用 Alembic operations。
 

@@ -26,14 +26,16 @@ def preview_rows(content, kind, skip_first_row, fields):
 
 
 def field_editor(key, append=False):
-    rows = st.data_editor([{"name": "", "remark": "", "data_type": "未指定", "required": not append, "nullable": append}],
+    rows = st.data_editor([{"name": "", "remark": "", "data_type": "未指定", "required": not append,
+                            "nullable": append, "unique": False}],
         num_rows="dynamic", hide_index=True, use_container_width=True, key=key,
         column_config={"name": st.column_config.TextColumn("欄位名稱", required=True, max_chars=64),
             "remark": st.column_config.TextColumn("備註", max_chars=500),
             "data_type": st.column_config.SelectboxColumn("data_type（選填）",
                 options=["未指定", "string", "integer", "decimal", "datetime", "boolean"]),
             "required": st.column_config.CheckboxColumn("必填欄位", default=not append),
-            "nullable": st.column_config.CheckboxColumn("允許 null", default=append)})
+            "nullable": st.column_config.CheckboxColumn("允許 null", default=append),
+            "unique": st.column_config.CheckboxColumn("唯一值 unique", default=False)})
     if hasattr(rows, "to_dict"):
         rows = rows.to_dict("records")
     fields = []
@@ -45,7 +47,8 @@ def field_editor(key, append=False):
         fields.append({"name": name, "remark": row.get("remark") or "",
                        "data_type": None if kind in {None, "未指定"} else kind,
                        "required": row.get("required") if type(row.get("required")) is bool else not append,
-                       "nullable": row.get("nullable") if type(row.get("nullable")) is bool else append})
+                       "nullable": row.get("nullable") if type(row.get("nullable")) is bool else append,
+                       "unique": row.get("unique") is True})
     return fields
 
 

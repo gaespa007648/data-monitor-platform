@@ -4,7 +4,11 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from app.config import get_settings
+from app.database import SessionFactory, engine
+from app.models import DatasetSchemaVersion
 from tests.cleanup_ui import cleanup
 from tests.modules_integration import call
 
@@ -129,6 +133,87 @@ class DatasetTests(unittest.TestCase):
         call(path+"/imports?schema_version=1&skip_first_row=true",
             "POST", file=("iris.csv", no_header), key=key, token=token, expected=409)
         self.assertEqual(call(path+"/records", token=token)["total"], 2)
+
+    def test_06_unique_manual_batch_and_dataset_scope(self):
+        token = self.tokens[self.names[0]]
+        fields = [{"name": "id", "data_type": "integer", "unique": True},
+                  {"name": "species", "data_type": "string"}]
+        ds = call("/api/v1/datasets", "POST",
+            {"name": "unique_"+uuid4().hex[:8], "fields": fields}, token=token, expected=201)
+        self.assertTrue(ds["fields"][0]["unique"])
+        path = f"/api/v1/datasets/{ds['id']}"
+        data = lambda value: {"schema_version": 1, "data": {"id": value, "species": "setosa"}}
+        call(path+"/records", "POST", data(1), token=token, expected=201)
+        call(path+"/records", "POST", data(1), token=token, expected=409)
+        duplicate_batch = json.dumps([{"id": 2, "species": "a"},
+                                      {"id": 2, "species": "b"}]).encode()
+        call(path+"/imports?schema_version=1&preview=true", "POST",
+             file=("duplicate.json", duplicate_batch), token=token, expected=422)
+        call(path+"/imports?schema_version=1", "POST",
+             file=("duplicate.json", duplicate_batch), token=token, expected=422)
+        conflict = json.dumps([{"id": 3, "species": "a"},
+                               {"id": 1, "species": "b"}]).encode()
+        call(path+"/imports?schema_version=1", "POST",
+             file=("conflict.json", conflict), token=token, expected=409)
+        self.assertEqual(call(path+"/records", token=token)["total"], 1)
+        valid = b"id,species\n2,a\n3,b\n"
+        call(path+"/imports?schema_version=1&preview=true", "POST",
+             file=("valid.csv", valid), token=token, expected=201)
+        call(path+"/imports?schema_version=1", "POST",
+             file=("valid.csv", valid), token=token, expected=201)
+        self.assertEqual(call(path+"/records", token=token)["total"], 3)
+        other = call("/api/v1/datasets", "POST",
+            {"name": "other_"+uuid4().hex[:8], "fields": fields}, token=token, expected=201)
+        call(f"/api/v1/datasets/{other['id']}/records", "POST", data(1), token=token, expected=201)
+        optional = call("/api/v1/datasets", "POST", {"name": "optional_"+uuid4().hex[:8],
+            "fields": [{"name": "code", "data_type": "string", "unique": True,
+                        "required": False, "nullable": True}]}, token=token, expected=201)
+        optional_path = f"/api/v1/datasets/{optional['id']}/records"
+        for row in [{}, {}, {"code": None}, {"code": None}]:
+            call(optional_path, "POST", {"schema_version": 1, "data": row},
+                 token=token, expected=201)
+        self.assertEqual(call(optional_path, token=token)["total"], 4)
+
+    def test_07_unique_concurrent_writes(self):
+        token = self.tokens[self.names[0]]
+        ds = call("/api/v1/datasets", "POST", {"name": "race_"+uuid4().hex[:8],
+            "fields": [{"name": "id", "data_type": "integer", "unique": True}]},
+            token=token, expected=201)
+        path = f"/api/v1/datasets/{ds['id']}/records"
+        def write(_):
+            try:
+                return call(path, "POST", {"schema_version": 1, "data": {"id": 7}},
+                            token=token, expected=201)
+            except AssertionError as exc:
+                self.assertIn("got 409", str(exc))
+                return None
+        with ThreadPoolExecutor(2) as pool:
+            results = list(pool.map(write, range(2)))
+        self.assertEqual(sum(item is not None for item in results), 1)
+        self.assertEqual(call(path, token=token)["total"], 1)
+
+    def test_08_old_schema_defaults_unique_false(self):
+        token = self.tokens[self.names[0]]
+        ds = self.create()
+        async def remove_flag():
+            try:
+                async with SessionFactory.begin() as session:
+                    version = await session.scalar(select(DatasetSchemaVersion).where(
+                        DatasetSchemaVersion.dataset_id == ds["id"],
+                        DatasetSchemaVersion.number == 1))
+                    version.definition = {"fields": [
+                        {key: value for key, value in field.items() if key != "unique"}
+                        for field in version.definition["fields"]]}
+            finally:
+                await engine.dispose()
+        asyncio.run(remove_flag())
+        path = f"/api/v1/datasets/{ds['id']}"
+        old = call(path, token=token)
+        self.assertTrue(all(field["unique"] is False for field in old["fields"]))
+        appended = call(path+"/fields", "POST", {"schema_version": 1,
+            "fields": [{"name": "new_id", "data_type": "integer", "unique": True}]},
+            token=token, expected=201)
+        self.assertTrue(appended["fields"][-1]["unique"])
 
     def test_04_concurrent_append_and_import_schema_conflict(self):
         ds = self.create()

@@ -83,16 +83,17 @@ with httpx.Client(base_url=base, timeout=30) as client:
     dataset_id = dataset["id"]
 
     widget(app, "radio", "數據集操作").set_value("管理數據集")
-    with patch("streamlit.data_editor", return_value=[{"name": "notes", "remark": "觀察註記", "data_type": "未指定", "required": False, "nullable": True}]):
+    with patch("streamlit.data_editor", return_value=[{"name": "notes", "remark": "觀察註記", "data_type": "未指定", "required": False, "nullable": True, "unique": True}]):
         app.run()
         widget(app, "selectbox", "選擇數據集").set_value(dataset_id).run()
         widget(app, "button", "新增欄位").click().run()
     assert not app.exception and app.success
     current = client.get(f"/api/v1/datasets/{dataset_id}").json()
     assert current["schema_version"] == 2
-    assert current["fields"][:5] == [{**field, "remark": field.get("remark", "")} for field in fields]
+    assert current["fields"][:5] == [{**field, "remark": field.get("remark", ""), "unique": False} for field in fields]
     assert current["fields"][5]["name"] == "notes"
     assert current["fields"][5]["remark"] == "觀察註記"
+    assert current["fields"][5]["unique"] is True
 
     app = page("create_page")
     assert not any(item.label == "數據集清單頁碼" for item in app.number_input)

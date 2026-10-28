@@ -174,3 +174,14 @@ class DatasetRecord(Base):
     source: Mapped[str] = mapped_column(String(10))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(TimestampType, default=utcnow)
+
+
+class DatasetUniqueValue(Base):
+    __tablename__ = "dataset_unique_values"
+    __table_args__ = (UniqueConstraint("dataset_id", "field_name", "value_hash",
+                                      name="uq_dataset_field_value"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"))
+    record_id: Mapped[int] = mapped_column(ForeignKey("dataset_records.id"))
+    field_name: Mapped[str] = mapped_column(String(64, collation="utf8mb4_bin"))
+    value_hash: Mapped[str] = mapped_column(String(64))

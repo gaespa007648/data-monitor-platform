@@ -19,6 +19,7 @@ class DatasetField(BaseModel):
     data_type: Literal["string", "integer", "decimal", "datetime", "boolean"] | None = None
     required: bool = True
     nullable: bool = False
+    unique: bool = False
 
     @model_validator(mode="after")
     def valid_name(self):
@@ -44,8 +45,24 @@ class DatasetDefinition(BaseModel):
         for field in definition["fields"]:
             if not field["remark"]:
                 field.pop("remark")
+            if not field["unique"]:
+                field.pop("unique")
         return hashlib.sha256(json.dumps(definition, ensure_ascii=False,
                                         sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def unique_value_hash(cell):
+    # Values are already validated and tagged. Numeric scale is not part of
+    # equality: 1, 1.0 and 1.00 refer to the same numeric value.
+    kind, value = cell["kind"], cell["value"]
+    if kind in {"integer", "decimal"}:
+        kind, value = "number", format(Decimal(value), "f")
+        if "." in value:
+            value = value.rstrip("0").rstrip(".")
+        if Decimal(value) == 0:
+            value = "0"
+    return hashlib.sha256(json.dumps([kind, value], ensure_ascii=False,
+        separators=(",", ":")).encode()).hexdigest()
 
 
 def encode_value(value, data_type, mode):

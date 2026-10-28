@@ -42,7 +42,7 @@ Compose 使用 `depends_on` 的健康與成功完成條件控制啟動相依。m
 
 所有應用資料讀寫都經 SQLAlchemy Async ORM 與 asyncmy。每次工作使用獨立 AsyncSession，交易結束後歸還連線；SQLAlchemy Engine 設定 pool_size=5、max_overflow=5、pool_pre_ping、1800 秒回收及 30 秒等待上限。Alembic operations 管理 schema，不在 API 啟動時自動 create_all。
 
-主要數據集流程使用 Dataset、DatasetSchemaVersion、DatasetRecord、DatasetImportBatch。數據集可自訂欄位，Schema 版本不可覆寫，只能附加欄位；記錄以 JSON 欄位儲存經型別驗證的值，並保存寫入時的 Schema 版本。批次匯入保存規則快照，資料與稽核在同一交易提交。既有 Category、Record、ImportBatch 與匯入 Schema 範本模型仍供固定四欄位 API 相容使用，其舊資料不會自動轉成數據集記錄。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
+主要數據集流程使用 Dataset、DatasetSchemaVersion、DatasetRecord、DatasetImportBatch 與 DatasetUniqueValue。數據集可自訂欄位，Schema 版本不可覆寫，只能附加欄位；記錄以 JSON 欄位儲存經型別驗證的值，並保存寫入時的 Schema 版本。標記 unique 的欄位另由資料庫唯一索引保障，批次匯入保存規則快照，資料與稽核在同一交易提交。既有 Category、Record、ImportBatch 與匯入 Schema 範本模型仍供固定四欄位 API 相容使用，其舊資料不會自動轉成數據集記錄。應用資料庫連線帳號由 `.env` 設定，與應用登入帳號屬不同層級。
 
 MariaDB `/var/lib/mysql` 掛載至 Compose named volume，預設名稱為 `data-monitor-platform_mariadb_data`。一般 `down` 與容器重建會保留資料，`down -v` 會刪除資料。Volume 不是備份；正式部署仍需另建備份及還原程序。
 
